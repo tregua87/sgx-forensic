@@ -1,7 +1,9 @@
 # VOLATILITY PLUGIN FOR SGX ANALYSIS ON LINUX
 
 The plugin performs a memory and framework analysis on SGX enclaves.
-First, you have to donwload [Volatility](https://github.com/volatilityfoundation/volatility).
+Requirements:
+- First, you have to donwload [Volatility](https://github.com/volatilityfoundation/volatility).
+- Second, you should install Radare2 from repository (https://github.com/radareorg/radare2 commit `14f82ee3012e10b56674a01c360ac1fbc4b4bf52`).
 
 Plugin Options:
 - FORCE (--force): Force to search SGX enclaves which could use custom SGX kernel drivers
