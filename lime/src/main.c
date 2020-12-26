@@ -24,8 +24,6 @@
 #include "lime.h"
 
 // This file
-static void read_epc_zone(void * epc_zone, unsigned int size);
-static int recursive_exploration(struct resource *, void *);
 static ssize_t write_lime_header(struct resource *);
 static ssize_t write_padding(size_t);
 static void write_range(struct resource *);
@@ -35,6 +33,12 @@ static ssize_t write_flush(void);
 static ssize_t try_write(void *, ssize_t);
 static int setup(void);
 static void cleanup(void);
+
+//SGX functions
+static int detect_sgx(void);
+static inline u64 sgx_extract_epc_address_size(u64 low, u64 high);
+static int read_epc_bank(void * epc_bank, unsigned int epc_size);
+static int write_epc_bank_lime(u64 epc_pa, u64 epc_size, void *p_last);
 
 // External
 extern ssize_t write_vaddr_tcp(void *, size_t);
@@ -138,7 +142,11 @@ int init_module (void)
 }
 
 static int init() {
+    struct resource *p;
     int err = 0;
+    int i;
+    u32 eax, ebx, ecx, edx, type;
+	u64 epc_pa, epc_size;
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,18)
     resource_size_t p_last = -1;
 #else
@@ -172,7 +180,51 @@ static int init() {
     }
 #endif
 
-    recursive_exploration(iomem_resource.child, &p_last);
+    for (p = iomem_resource.child; p ; p = p->sibling) {
+
+        if (!p->name || strcmp(p->name, LIME_RAMSTR))
+            continue;
+
+        if (mode == LIME_MODE_LIME && write_lime_header(p) < 0) {
+            DBG("Error writing header 0x%lx - 0x%lx", (long) p->start, (long) p->end);
+            break;
+        } else if (mode == LIME_MODE_PADDED && write_padding((size_t) ((p->start - 1) - p_last)) < 0) {
+            DBG("Error writing padding 0x%lx - 0x%lx", (long) p_last, (long) p->start - 1);
+            break;
+        }
+
+        write_range(p);
+
+        p_last = p->end;
+    }
+
+    // Check SGX support and dump EPC banks
+    if(detect_sgx()) {
+        DBG("SGX present and enabled!");
+
+        // Loop over EPC banks and dump them
+        for (i = 0; i < SGX_MAX_EPC_BANKS; i++) {
+            cpuid_count(SGX_CPUID, i + SGX_CPUID_FIRST_VARIABLE_SUB_LEAF,
+                    &eax, &ebx, &ecx, &edx);
+
+            type = eax & SGX_CPUID_SUB_LEAF_TYPE_MASK;
+            if (type == SGX_CPUID_SUB_LEAF_INVALID)
+                break;
+
+            if (type != SGX_CPUID_SUB_LEAF_EPC_SECTION)
+                break;
+
+            epc_pa = sgx_extract_epc_address_size(eax, ebx);
+            epc_size = sgx_extract_epc_address_size(ecx, edx);
+
+            DBG("EPC section 0x%llx-0x%llx", epc_pa, epc_pa + epc_size - 1);
+
+            if(!write_epc_bank_lime(epc_pa, epc_size, &p_last))
+                break;
+            memset(vpage, 0, PAGE_SIZE);
+        }
+
+    }
 
     write_flush();
 
@@ -207,50 +259,6 @@ static int init() {
 
     free_page((unsigned long) vpage);
 
-    return 0;
-}
-
-static int recursive_exploration(struct resource * res, void * plast) {
-    struct resource *p;
-    void *epc;
-    unsigned long epc_size;
-    #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,18)
-        resource_size_t *p_last = (resource_size_t *) plast;
-    #else
-        __PTRDIFF_TYPE__ *p_last = (__PTRDIFF_TYPE__ *) plast;
-    #endif
-    if (!res)
-        return 1;
-    for (p = res; p; p = p->sibling) {
-        if (!p->name || (strcmp(p->name, LIME_RAMSTR) && !strstr(p->name, SGX_DEVSTR))) {
-        if (p->child && recursive_exploration(p->child, plast))
-                return 1;
-        }
-    else {
-           if (mode == LIME_MODE_LIME && write_lime_header(p) < 0) {
-                DBG("Error writing header 0x%lx - 0x%lx", (long) p->start, (long) p->end);
-                return 1;
-            }
-            else if (mode == LIME_MODE_PADDED && write_padding((size_t) ((p->start - 1) - (*p_last))) < 0) {
-                DBG("Error writing padding 0x%lx - 0x%lx", (long) (*p_last), (long) p->start - 1);
-                return 1;
-            }
-            if (!strstr(p->name, SGX_DEVSTR)) 
-		        write_range(p);
-            else {
-                // Dump SGX pages in EPC zone
-                epc_size = p->end - p->start + 1;
-                DBG("SGX: Found SGX EPC memory zone at 0x%llx, size 0x%lx", p->start, epc_size);
-                epc = memremap(p->start, epc_size, MEMREMAP_WB);
-                if (epc) {
-                    read_epc_zone(epc, epc_size);
-                    memunmap(epc);
-                }
-            }
-
-            *p_last = p->end;
-        }
-    }
     return 0;
 }
 
@@ -310,79 +318,44 @@ static void write_range(struct resource * res) {
         p = pfn_to_page((i) >> PAGE_SHIFT);
 
         is = min((size_t) PAGE_SIZE, (size_t) (res->end - i + 1));
-	
+
         if (is < PAGE_SIZE) {
-                // We can't map partial pages and
-                // the linux kernel doesn't use them anyway
-                DBG("Padding partial page: vaddr %p size: %lu", (void *) i, (unsigned long) is);
-                write_padding(is);
+            // We can't map partial pages and
+            // the linux kernel doesn't use them anyway
+            DBG("Padding partial page: vaddr %p size: %lu", (void *) i, (unsigned long) is);
+            write_padding(is);
         } else {
-                v = kmap(p);
-                /*
-                 * If we need to compute the digest or compress the output
-                 * take a snapshot of the page. Otherwise save some cycles.
-                 */ 
+            v = kmap(p);
+            /*
+             * If we need to compute the digest or compress the output
+             * take a snapshot of the page. Otherwise save some cycles.
+             */
+            if (no_overlap) {
+                copy_page(vpage, v);
+                s = write_vaddr(vpage, is);
+            } else {
+                s = write_vaddr(v, is);
+            }
+            kunmap(p);
 
-                if (no_overlap) {
-                        copy_page(vpage, v);
-                        s = write_vaddr(vpage, is);
-                    } else {
-                        s = write_vaddr(v, is);
-                    }
-
-                kunmap(p);
-                }
-        if (s < 0) {
-            DBG("Failed to write page: vaddr %p. Skipping Range...", v);
-            break;
+            if (s < 0) {
+                DBG("Failed to write page: vaddr %p. Skipping Range...", v);
+                break;
+            }
         }
 
 #ifdef LIME_SUPPORTS_TIMING
         end = ktime_get_real();
-        // Disabled because SGX dump could require some time
-        /*if (timeout > 0 && ktime_to_ms(ktime_sub(end, start)) > timeout) {
+
+        if (timeout > 0 && ktime_to_ms(ktime_sub(end, start)) > timeout) {
             DBG("Reading is too slow.  Skipping Range...");
             write_padding(res->end - i + 1 - is);
             break;
-        }*/
+        }
 #endif
 
     }
 }
-
-static void read_epc_zone(void * epc_zone, unsigned int epc_size) {
-    // Read an EPC zone and write it    
-    // Use the already allocated vpage as temporary buffer
-    unsigned long epc_page_addr;
-    unsigned long rd_data;
-    unsigned long *rd_data_ptr = &rd_data;
-    int pg_off, offset, modified;
-
-    modified = 1;
-    for (pg_off = 0; pg_off < epc_size; pg_off += PAGE_SIZE) {
-        
-        // Set the page content as an SGX abort page
-        if (modified) {
-            memset(vpage, 0xFF, PAGE_SIZE);
-            modified = 0;
-        }
-        
-        epc_page_addr = ((unsigned long) epc_zone) + pg_off;
-        for (offset = 0; offset < PAGE_SIZE; offset += sizeof(unsigned long)) {
-            if(!(enclave_op(EDGBRD, rd_data_ptr,  epc_page_addr + offset))) {
-                memcpy(vpage + offset, rd_data_ptr, sizeof(unsigned long));
-                modified = 1;
-	        }
-        }
-
-        if (write_vaddr(vpage, PAGE_SIZE) < 0) {
-            DBG("SGX: error writing physical page");
-            break;
-            }
-     }
-     memset(vpage, 0, PAGE_SIZE);
-}
-
 
 static ssize_t write_vaddr(void * v, size_t is) {
     ssize_t ret;
@@ -445,6 +418,90 @@ static void cleanup(void) {
 
 void cleanup_module(void) {
 
+}
+
+// SGX Functions
+static int detect_sgx(void) {
+    unsigned long long fc;
+
+    rdmsrl(MSR_IA32_FEAT_CTL, fc);
+
+    if (!(fc & FEAT_CTL_LOCKED) || !(fc & FEAT_CTL_SGX_ENABLED) || !cpu_has(&boot_cpu_data, X86_FEATURE_SGX))
+        return 0;
+    else
+        return 1;
+
+}
+
+static inline u64 sgx_extract_epc_address_size(u64 low, u64 high)
+{
+	return (low & GENMASK_ULL(31, 12)) +
+	       ((high & GENMASK_ULL(19, 0)) << 32);
+}
+
+static int read_epc_bank(void * epc_bank, unsigned int epc_size) {
+    // Read an EPC zone and write it
+    // Use the already allocated vpage as temporary buffer
+    unsigned long epc_page_addr;
+    unsigned long rd_data;
+    unsigned long *rd_data_ptr = &rd_data;
+    int pg_off, offset, modified;
+
+    modified = 1;
+    for (pg_off = 0; pg_off < epc_size; pg_off += PAGE_SIZE) {
+
+        // Set the page content as an SGX abort page
+        if (modified) {
+            memset(vpage, 0xFF, PAGE_SIZE);
+            modified = 0;
+        }
+
+        epc_page_addr = ((unsigned long) epc_bank) + pg_off;
+        for (offset = 0; offset < PAGE_SIZE; offset += sizeof(unsigned long)) {
+            if(!(enclave_op(EDGBRD, rd_data_ptr,  epc_page_addr + offset))) {
+                memcpy(vpage + offset, rd_data_ptr, sizeof(unsigned long));
+                modified = 1;
+	        }
+        }
+
+        if (write_vaddr(vpage, PAGE_SIZE) < 0) {
+            DBG("SGX: error writing physical page");
+            return 0;
+            }
+     }
+     return 1;
+}
+
+static int write_epc_bank_lime(u64 epc_pa, u64 epc_size, void *p_last_v) {
+    long *p_last = (long *)p_last_v;
+    int status = 0;
+    void *epc_map;
+    struct resource epc_resource;
+    epc_resource.start = epc_pa;
+    epc_resource.end = epc_pa + epc_size;
+
+    if (mode == LIME_MODE_LIME && write_lime_header(&epc_resource) < 0) {
+        DBG("Error writing header 0x%lx - 0x%lx", (long) epc_pa, (long) epc_resource.end);
+        return 0;
+    }
+
+    else if (mode == LIME_MODE_PADDED && write_padding((size_t) ((epc_pa - 1) - (*p_last))) < 0) {
+        DBG("Error writing padding 0x%lx - 0x%lx", (long) (*p_last), (long) epc_pa - 1);
+        return 0;
+    }
+
+    // Dump SGX pages in EPC bank
+    epc_map = memremap(epc_pa, epc_size, MEMREMAP_WB);
+    if (epc_map) {
+        status = read_epc_bank(epc_map, epc_size);
+        memunmap(epc_map);
+    }
+    else
+        DBG("Error in memremap() of 0x%lx - 0x%lx EPC bank", (long) epc_pa, (long) epc_resource.end);
+
+    *p_last = epc_resource.end;
+
+    return status;
 }
 
 MODULE_LICENSE("GPL");

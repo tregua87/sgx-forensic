@@ -38,19 +38,17 @@
 #include <net/sock.h>
 #include <net/tcp.h>
 
+#include <linux/io.h>
+
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 6, 0)
 #include <crypto/hash.h>
 #elif LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 11)
 #include <linux/crypto.h>
 #endif
 
-#include <linux/io.h>
-
 #define LIME_RAMSTR "System RAM"
 #define LIME_MAX_FILENAME_SIZE 256
 #define LIME_MAGIC 0x4C694D45 //LiME
-
-#define SGX_DEVSTR "INT0E0C"
 
 #define LIME_MODE_RAW 0
 #define LIME_MODE_LIME 1
@@ -94,12 +92,22 @@ typedef struct {
     unsigned char reserved[8];
 } __attribute__ ((__packed__)) lime_mem_range_header;
 
+//SGX defs
+#ifndef MSR_IA32_FEAT_CTL
+#define MSR_IA32_FEAT_CTL                   MSR_IA32_FEATURE_CONTROL
+#endif
+#define FEAT_CTL_SGX_ENABLED                (1<<18)
+#define X86_FEATURE_SGX		            (9 * 32 + 2)
+#define SGX_MAX_EPC_BANKS                   128
+#define SGX_CPUID		            0x12
+#define SGX_CPUID_FIRST_VARIABLE_SUB_LEAF   2
+#define SGX_CPUID_SUB_LEAF_TYPE_MASK	    GENMASK(3, 0)
+#define SGX_CPUID_SUB_LEAF_INVALID          0x0
+#define SGX_CPUID_SUB_LEAF_EPC_SECTION      0x1
+#define EDGBRD                              0x04
+#define ENCLS_FAULT_FLAG                    0x40000000
 
-// SGX extension
-// MACROS from INTEL SGX SDK
-#define EDGBRD 0x04
-#define ENCLS_FAULT_FLAG 0x40000000
-
+// MACROs from INTEL SGX SDK
 #define enclave_op(rax, data, rcx)                     \
         ({                                              \
         unsigned long rbx_out;                          \
@@ -108,7 +116,7 @@ typedef struct {
                 *data = rbx_out;                         \
         ret;                                            \
         })
-        
+
 #define __encls_N(rax, rbx_out, inputs...)                      \
         ({                                                      \
         int ret;                                                \
