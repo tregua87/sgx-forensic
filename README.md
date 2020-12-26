@@ -9,4 +9,4 @@ The project is structured as follow:
 
 The project is maintained by:
 - Flavio Toffalini (https://github.com/tregua87)
-- Andrea Olivieri (https://github.com/IridiumXOR/)
+- Andrea Oliveri (https://github.com/IridiumXOR/)
