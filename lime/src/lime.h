@@ -96,6 +96,9 @@ typedef struct {
 #ifndef MSR_IA32_FEAT_CTL
 #define MSR_IA32_FEAT_CTL                   MSR_IA32_FEATURE_CONTROL
 #endif
+#ifndef FEAT_CTL_LOCKED
+#define FEAT_CTL_LOCKED FEATURE_CONTROL_LOCKED
+#endif
 #define FEAT_CTL_SGX_ENABLED                (1<<18)
 #define X86_FEATURE_SGX		            (9 * 32 + 2)
 #define SGX_MAX_EPC_BANKS                   128
