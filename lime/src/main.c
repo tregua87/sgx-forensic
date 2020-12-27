@@ -219,9 +219,10 @@ static int init() {
 
             DBG("EPC section 0x%llx-0x%llx", epc_pa, epc_pa + epc_size - 1);
 
-            if(!write_epc_bank_lime(epc_pa, epc_size, &p_last))
-                break;
+            err = write_epc_bank_lime(epc_pa, epc_size, &p_last);
             memset(vpage, 0, PAGE_SIZE);
+            if(err)
+                break;
         }
 
     }
@@ -466,10 +467,10 @@ static int read_epc_bank(void * epc_bank, unsigned int epc_size) {
 
         if (write_vaddr(vpage, PAGE_SIZE) < 0) {
             DBG("SGX: error writing physical page");
-            return 0;
+            return 1;
             }
      }
-     return 1;
+     return 0;
 }
 
 static int write_epc_bank_lime(u64 epc_pa, u64 epc_size, void *p_last_v) {
@@ -478,17 +479,16 @@ static int write_epc_bank_lime(u64 epc_pa, u64 epc_size, void *p_last_v) {
     void *epc_map;
     struct resource epc_resource;
     epc_resource.start = epc_pa;
-    epc_resource.end = epc_pa + epc_size;
+    epc_resource.end = epc_pa + epc_size - 1;
 
     if (mode == LIME_MODE_LIME && write_lime_header(&epc_resource) < 0) {
         DBG("Error writing header 0x%lx - 0x%lx", (long) epc_pa, (long) epc_resource.end);
-        return 0;
+        return 1;
     }
 
     else if (mode == LIME_MODE_PADDED && write_padding((size_t) ((epc_pa - 1) - (*p_last))) < 0) {
         DBG("Error writing padding 0x%lx - 0x%lx", (long) (*p_last), (long) epc_pa - 1);
-        return 0;
-    }
+        return 1;
 
     // Dump SGX pages in EPC bank
     epc_map = memremap(epc_pa, epc_size, MEMREMAP_WB);

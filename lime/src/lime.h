@@ -74,9 +74,10 @@
     err; \
 })
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,35)
-#define LIME_SUPPORTS_TIMING
-#endif
+// Disable timing... too strict!
+// #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,35)
+// #define LIME_SUPPORTS_TIMING
+// #endif
 
 #ifdef CONFIG_ZLIB_DEFLATE
 #define LIME_SUPPORTS_DEFLATE
