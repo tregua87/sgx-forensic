@@ -33,6 +33,11 @@ class EPCBank:
     def __repr__(self):
         return "{}\t{} - {}".format(self.name, hex(self.start), hex(self.end))
 
+    def __hash__(self):
+        return hash((self.start, self.end))
+
+    def __eq__(self, other):
+        return self.start == other.start and self.end == other.end
 
 class SGXEnclave:
     def __init__(self, parent_task, estruct, driver, mode, framework):
@@ -53,10 +58,10 @@ class SGXEnclave:
             self.is_raw = True
             return
         self.is_raw = False
-        
+
         if not self._check_enclave_validity():
             raise ValueError
-        
+
         self.einfo["base"] = self.estruct.base
         self.einfo["size"] = self.estruct.m("size")
         self.einfo["flags"] = self.decode_flags()
@@ -66,7 +71,7 @@ class SGXEnclave:
         self.mode = mode
 
     def performs_long_operations(self):
-        # NOTE for future developres, I moved the enclave analysis here because I noticed that the plugin creates multiple copies of the same object SGXEnclave      
+        # NOTE for future developres, I moved the enclave analysis here because I noticed that the plugin creates multiple copies of the same object SGXEnclave
         # referring to the same actual enclave. Therefore, moving the analysis here saves time since this information is only required in the generation() function
         if self.mode == 'M' or self.mode == 'B':
             self._extract_memory_layout()
@@ -189,7 +194,7 @@ class SGXEnclave:
             offset += 8
 
             while offset <= max_offset:
-                
+
                 maybe_add_str = unpack("<Q", b)[0]
 
                 # print("read 0x{:02x} @ 0x{:02x}".format(maybe_add_str, offset))
@@ -263,7 +268,7 @@ class SGXEnclave:
                         # print("[OK!] A possible ecall_table @ 0x{:02x} with {} items".format(ecall_table, n_ecall))
                     offset_begin_table = 0
                     n_ecall = 0
-                
+
                 # b = file.read(8)
                 # offset += 8
                 b = proc_as.zread(offset, 8)
@@ -285,7 +290,7 @@ class SGXEnclave:
 
         possible_ocalls = list()
         possible_ocalls_size = list()
-        
+
         # to read things
         proc_as = task.get_process_address_space()
 
@@ -310,11 +315,11 @@ class SGXEnclave:
             if not elf_name:
                 elf_name = fname
                 base_address = vm_start
-                    
+
             # exclude pages not belonging to main ELF
             if fname != elf_name:
                 continue
-        
+
             offset = vm_start
             max_offset = vm_end
 
@@ -328,8 +333,8 @@ class SGXEnclave:
             n_ocall = 0
 
             while offset <= max_offset:
-                
-                # maybe_add_fun = int.from_bytes(b, byteorder='little', signed=False) 
+
+                # maybe_add_fun = int.from_bytes(b, byteorder='little', signed=False)
                 maybe_add_fun = unpack("<Q", b)[0]
 
                 # NULL value that ends the table
@@ -403,7 +408,7 @@ class SGXEnclave:
 
             b = proc_as.zread(offset, 8)
             offset += 8
-            
+
             while offset <= max_offset:
 
                 x = unpack("<Q", b)[0]
@@ -426,9 +431,9 @@ class SGXEnclave:
                         else:
                             # print("[STOP]")
                             break
-                        
+
                     if n_add_exec == x:
-                        ocall_addr = offset - 8 
+                        ocall_addr = offset - 8
                         # print("[OK!] A possible ocall_table @ 0x{:02x} (0x{:02x}) with {} ocall".format(ocall_addr, ocall_addr-base_address, x))
                         possible_ocalls += [ocall_addr]
 
@@ -466,9 +471,9 @@ class SGXEnclave:
         return ecreate, ecalls, ocalls
 
     def _infer_interfaces_rustsdk(self, task, elfs_map, min_enclave, max_enclave):
-       
+
         pltjmp = ExternalAnalyzerRUSTSDK.extract_pltjmp(elfs_map)
-       
+
         exported_fun = ExternalAnalyzerRUSTSDK.extract_exported_fun(elfs_map, "libsgx_urts.so")
 
         # get libsgx_urts.so base address
@@ -506,7 +511,7 @@ class SGXEnclave:
 
         possible_ocall_table = self.find_possible_ocall_table(task, min_enclave, max_enclave)
 
-        try: 
+        try:
             ecalls, ocall_tables = ExternalAnalyzerRUSTSDK.extract_interface(elfs_map, possible_ocall_table, plt_decoded)
         except Exception, e:
             print("an exception here")
@@ -525,9 +530,9 @@ class SGXEnclave:
                 ocall_add_bytes = proc_as.zread(ot + (i+1)*8, 8)
                 ocall_add = unpack("<Q", ocall_add_bytes)[0]
                 ocalls.add(ocall_add)
-        
+
         return [], ecalls, ocalls
-        
+
     def _infer_interfaces_sgxlkl(self, task, elfs_map, min_enclave, max_enclave):
 
         (possible_ocall_table, possible_ocall_table_size) = self.find_possible_ocall_table2(task, min_enclave, max_enclave)
@@ -635,7 +640,7 @@ class SGXEnclave:
         elfs_map = {}
 
         task = self.parent_task
-        
+
         elf_main = task.mm.start_code
 
         for elf, elf_start, elf_end, soname, needed in task.elfs():
@@ -647,10 +652,10 @@ class SGXEnclave:
             elfs_map[soname]["main"] = elf_main == elf_start
 
         return elfs_map
-        
+
     def _check_enclave_validity(self):
         # Check if all the reference in sgx_encl struct are valid
-        
+
         if not self.estruct.backing.is_valid() or \
            not self.estruct.va_pages.prev.is_valid() or \
            not self.estruct.va_pages.next.is_valid():
@@ -709,7 +714,7 @@ class SGXEnclave:
         for pos, attr in attributes.items():
             if self.estruct.attributes & pos:
                 flags_l.add(attr)
-        
+
         flags_l = list(flags_l)
         flags_l.sort()
         return flags_l
@@ -730,7 +735,7 @@ class SGXEnclave:
             # Identify additional information of the enclave
             is_container, emmaps_tags_container, tcss_container = self._try_tag_container(enclave_mmaps)
             is_elrange, emmaps_tags_elrange, tcss_elrange = self._try_tag_elrange(enclave_mmaps)
-            
+
             if is_container:
                 self.einfo["type"] = "CONTAINER"
                 self.einfo["mmap"] = emmaps_tags_container
@@ -797,7 +802,7 @@ class SGXEnclave:
                         phase = "THREAD"
                     else:
                         raise Exception("Page [%s] does not fit the template" % raw)
-                
+
                 elif phase == "THREAD":
                     if t_phase == "TLS":
                         if (is_read, is_write, is_exec) == (True, True, False):
@@ -815,10 +820,10 @@ class SGXEnclave:
                                 enclave_mmaps_tags.append([start, end, flags, t_phase])
                                 t_phase_pr = t_phase
                                 t_phase = "GUARDT"
-                                
+
                         else:
                             raise Exception("Page [%s] does not fit the template" % raw)
-                    
+
                     elif t_phase == "TCSSSA":
                         if (is_read, is_write, is_exec) == (True, True, False):
 
@@ -836,10 +841,10 @@ class SGXEnclave:
                                 tcss += [vadd_start]
                                 t_phase_pr = t_phase
                                 t_phase = "GUARDT"
-                                
+
                         else:
                             raise Exception("Page [%s] does not fit the template" % raw)
-                    
+
                     elif t_phase == "STACK":
                         if (is_read, is_write, is_exec) == (True, True, False):
 
@@ -857,10 +862,10 @@ class SGXEnclave:
                                 t_phase_pr = t_phase
                                 t_phase = "GUARDT"
                                 is_firstthread = False
-                                
+
                         else:
                             raise Exception("Page [%s] does not fit the template" % raw)
-                    
+
                     elif t_phase == "GUARDT":
                         if (is_read, is_write, is_exec) == (False, False, False):
 
@@ -886,18 +891,18 @@ class SGXEnclave:
                                 elif t_phase_pr == "STACK":
                                     t_phase_pr = t_phase
                                     t_phase = "TLS"
-                                
+
                         else:
                             raise Exception("Page [%s] does not fit the template" % raw)
                     else:
                         raise Exception("Page [%s] does not fit the template" % raw)
-        
+
         except Exception as e:
             pass
 
 
         enclave_mmaps_tags_2 = []
-        
+
         for i, (start, end, flags, n_tag) in enumerate(enclave_mmaps[:]):
             # select only lines belonging to current enclave
             if  i >= last_thread:
@@ -944,7 +949,7 @@ class SGXEnclave:
         return self.parent_task == other.parent_task and \
                self.estruct == other.estruct and \
                self.driver == other.driver
-    
+
 
 class linux_sgx(linux_common.AbstractLinuxCommand):
     """Check support for Intel SGX and find SGX enclaves"""
@@ -991,7 +996,7 @@ class linux_sgx(linux_common.AbstractLinuxCommand):
         if (self._config.FORCE or self._config.HIDDENPROC) and (self._config.PID or self._config.OFFSET or self._config.DUMP_DIR):
             print("Error! Use only one option group between [FORCE HIDDENPROC] and [PID OFFSET DUMP-DIR]")
             return []
-        
+
         if self._config.PID and self._config.OFFSET:
             print("Error! Use only one option between [PID OFFSET]")
             return []
@@ -1008,26 +1013,10 @@ class linux_sgx(linux_common.AbstractLinuxCommand):
             framework_supported_str = "|".join(self.FRAMEWORKS_SUPPORTED)
             return []
 
-        # Look for EPC banks
-        self.epc_banks = self.find_epc_banks()
+        # Look for EPC banks in /proc/iomem
+        epc_banks_iomem = self.find_epc_banks_iomem()
 
-        if not self.epc_banks:
-            print("Seems CPU does not support SGX or it was not enabled in BIOS/UEFI...")
-            return []
-        else:
-            print("SGX EPC banks:\t")
-            for epc_bank in self.epc_banks:
-                print("\t" + str(epc_bank))
-
-        # Look for Intel SGX kernel module(s) in dmesg
         if not self._config.FORCE:
-            dmesg_module_str = self.find_intel_module_dmesg()
-            if not dmesg_module_str:
-                print("Intel SGX kernel modules not loaded at boot time")
-                return []
-            else:
-                print("SGX module banner: {}".format(dmesg_module_str))      
-
             # Look for Intel SGX kernel module(s) at dump time
             isgx_mod, dcap_mod = self.find_intel_module_loaded()
             if isgx_mod or dcap_mod:
@@ -1036,8 +1025,27 @@ class linux_sgx(linux_common.AbstractLinuxCommand):
             else:
                 print("Intel SGX kernel modules not loaded at dump time")
                 return []
+
+            # Look for Intel SGX kernel module(s) in dmesg and EPC banks
+            dmesg_module_str, epc_banks_dmesg = self.find_intel_module_dmesg()
+            if not dmesg_module_str:
+                print("Intel SGX kernel modules not loaded at boot time")
+                return []
+            else:
+                print("SGX module banner: {}".format(dmesg_module_str))
+
         else:
             isgx_mod = False
+            epc_banks_dmesg = set()
+
+        self.epc_banks = list(epc_banks_iomem.union(epc_banks_dmesg))
+        if not self.epc_banks:
+            print("Seems CPU does not support SGX or it was not enabled in BIOS/UEFI...")
+            return []
+        else:
+            print("SGX EPC banks:\t")
+            for epc_bank in self.epc_banks:
+                print("\t" + str(epc_bank))
 
         if (self._config.PID or self._config.OFFSET) and not self._config.DUMP_DIR:
             self.mode = 0 # Info mode
@@ -1049,25 +1057,36 @@ class linux_sgx(linux_common.AbstractLinuxCommand):
             self.mode = 2 # Find enclave mode
             return self.find_enclaves(isgx_mod)
 
-    def find_epc_banks(self):
+    def find_epc_banks_iomem(self):
         """Find the EPC banks defined by the BIOS/UEFI subsystem"""
-        epc_banks = []
+        epc_banks = set()
         for iores in linux_iomem.linux_iomem(self._config).calculate():
             _, name, start, end = iores
             name = str(name)
             if "INT0E0C" in name:
-                epc_banks.append(EPCBank(name, int(start), int(end)))
+                epc_banks.add(EPCBank(name, int(start), int(end)))
         return epc_banks
 
     def find_intel_module_dmesg(self):
         """Find the Intel SGX driver(s) log output in dmesg"""
         dmesg_module_str = ""
+        epc_banks_dmesg = set()
+
         msg_block = str(list(linux_dmesg.linux_dmesg(self._config).calculate())[0])
         for msg_line in msg_block.split("\n"):
+
             if "Intel SGX" in msg_line:
-                dmesg_module_str = msg_line.split(": ")[1].strip()
-                break
-        return dmesg_module_str
+                dmesg_module_str = msg_line.split(": ")[-1].strip()
+
+            if "EPC" in msg_line:
+                epc_addr, epc_dim = (msg_line.split()[-1]).split("-")
+                epc_addr = int(epc_addr, 16)
+                epc_dim = int(epc_dim, 16)
+                if "bank" in msg_line:
+                    epc_dim -= 1
+                epc_banks_dmesg.add(EPCBank("", epc_addr, epc_dim))
+
+        return dmesg_module_str, epc_banks_dmesg
 
     def find_intel_module_loaded(self):
         """Find the Intel SGX driver(s) loaded at dump time"""
@@ -1104,8 +1123,8 @@ class linux_sgx(linux_common.AbstractLinuxCommand):
             task_addr_sp = task.get_process_address_space()
             try:
                 for vma in task.get_proc_maps():
-                    for page_addr in range(vma.vm_start, vma.vm_end, 4096):                            
-                        
+                    for page_addr in range(vma.vm_start, vma.vm_end, 4096):
+
                         phy_pg_addr = task_addr_sp.vtop(page_addr)
                         if phy_pg_addr is None:
                             continue
@@ -1120,16 +1139,15 @@ class linux_sgx(linux_common.AbstractLinuxCommand):
                                     continue
             except StopIteration:
                 pass
-        
+
         return enclaves
 
     def find_sgx_enclaves_intel_drv(self, proc_iter, driver):
         """Look for enclaves using Intel SGX drivers structs"""
-
         enclaves = set()
         for task in proc_iter:
             enclaves_s = self.find_sgx_enclaves_host_proc(task, driver)
-            for estruct in enclaves_s: 
+            for estruct in enclaves_s:
                 try:
                     enclave = SGXEnclave(task, estruct, driver, self._config.ANALYSIS, self._config.FRAMEWORK)
                     enclaves.add(enclave)
@@ -1139,7 +1157,7 @@ class linux_sgx(linux_common.AbstractLinuxCommand):
         # Explore other possible enclaves listed belonging to the sgx_encl.encl_list list
         if not enclaves or driver != "isgx":
             return list(enclaves)
-        
+
         for encl_obj in enclaves:
             encl = encl_obj.estruct
             for nxt_encl in encl.encl_list.list_of_type("sgx_encl_isgx", "encl_list"):
@@ -1159,12 +1177,12 @@ class linux_sgx(linux_common.AbstractLinuxCommand):
                 # Check if the vm_area_struct is a valid SGX memory area
                 if not self.check_sgx_area_struct(task_s, vma):
                     continue
-                
+
                 # struct sgx_encl candidate found
                 estructs.append(vma.vm_private_data.dereference_as(sgx_encl_struct))
-        
+
         return estructs
-    
+
     def check_sgx_area_struct(self, task_s, vm_area_struct):
         """Check if a vm_area_struct contains a reference to an SGX enclave loaded by Intel drivers"""
         # Ignore regular pages
@@ -1173,6 +1191,8 @@ class linux_sgx(linux_common.AbstractLinuxCommand):
 
         # SGX pages has special VM flags enabled
         vm_flags = vm_area_struct.flags()
+        print(vm_flags)
+        print(vm_area_struct.vm_name(task_s).lower())
         if  "VM_PFNMAP" not in vm_flags or \
             "VM_DONTEXPAND" not in vm_flags or \
             "VM_IO" not in vm_flags:
@@ -1181,7 +1201,7 @@ class linux_sgx(linux_common.AbstractLinuxCommand):
         # Ignore pages which point to invalid vm_private_data addresses
         if not vm_area_struct.vm_private_data.is_valid():
             return False
-        
+
         return True
 
     def return_task_by_pid_offset(self):
@@ -1217,7 +1237,7 @@ class linux_sgx(linux_common.AbstractLinuxCommand):
         task = self.return_task_by_pid_offset()
         if not task:
             return []
-        
+
         # Identify all the ELFs which are inside EPC
         elfs = []
         for elf, elf_start, elf_end, soname, needed in task.elfs():
@@ -1251,7 +1271,7 @@ class linux_sgx(linux_common.AbstractLinuxCommand):
                         enclave.einfo["framework"],
                         enclave.einfo["ecreate"],
                         enclave.einfo["ecalls"],
-                        enclave.einfo["ocalls"]                        
+                        enclave.einfo["ocalls"]
                     ])
         elif self.mode == 2:
             if not self._config.FORCE:
@@ -1283,7 +1303,7 @@ class linux_sgx(linux_common.AbstractLinuxCommand):
                 ])
 
     def unified_output(self, data):
-        # FLAVIO: I guess we don't need this 
+        # FLAVIO: I guess we don't need this
         # if self.mode == 0:
         #     tree = [
         #         ("Offset", Address),
@@ -1311,7 +1331,7 @@ class linux_sgx(linux_common.AbstractLinuxCommand):
                 ("Enclave flags", str),
                 ]
             return TreeGrid(tree, self.generator(data))
-        
+
         else:
             tree = [
                 ("Name", str),
@@ -1325,7 +1345,7 @@ class linux_sgx(linux_common.AbstractLinuxCommand):
 
         if self.mode == 0:
             for i, (offset, task_name, task_pid, encl_base, encl_size, encl_flags, encl_xfrm, encl_ssa_size, encl_type, tcss, enclave_mmaps_tags, framework, ecreate, ecalls, ocalls) in self.generator(data):
-                
+
                 outfd.write("\n" + "="*80 + "\n")
                 outfd.write("Host Process [offset=0x{:x}, name={}, PID: {}]\n".format(offset, task_name, task_pid))
                 outfd.write("Enclave [base_address=0x{:x}, size=0x{:x}, flags={}, xfrm={}, ssa size={} type={}]\n".format(encl_base, encl_size, encl_flags, encl_xfrm, encl_ssa_size, encl_type))
@@ -1343,7 +1363,7 @@ class linux_sgx(linux_common.AbstractLinuxCommand):
                             outfd.write("\t0x{:x}-0x{:x} {} [{}]\n".format(start, end, permission, tag))
                         else:
                             outfd.write("\t0x{:x}-0x{:x} {}\n".format(start, end, permission))
-                
+
                 if self._config.ANALYSIS == 'I' or self._config.ANALYSIS == 'B':
 
                     outfd.write("SGX Framework: {}\n".format(framework))
@@ -1368,14 +1388,14 @@ class linux_sgx(linux_common.AbstractLinuxCommand):
             # THIS IS THE STANDARD BEHAVIOR OF COMMAND.PY, IT FALLBACKS TO unified_output()
             self._render(outfd, TextRenderer(self.text_cell_renderers, sort_column = self.text_sort_column,
                                          config = self._config), data)
-    
+
     def render_json(self, outfd, data):
 
         if self.mode == 0:
             # print "json verbose output"
             lst = []
             for i, (offset, task_name, task_pid, encl_base, encl_size, encl_flags, encl_xfrm, encl_ssa_size, encl_type, tcss, enclave_mmaps_tags, framework, ecreate, ecalls, ocalls) in self.generator(data):
-                
+
                 record = {}
                 record["offset"] = offset
                 record["task_name"] = task_name
