@@ -474,10 +474,10 @@ static int read_epc_bank(void * epc_bank, unsigned int epc_size) {
 }
 
 static int write_epc_bank_lime(u64 epc_pa, u64 epc_size, void *p_last_v) {
-    long *p_last = (long *)p_last_v;
-    int status = 0;
     void *epc_map;
     struct resource epc_resource;
+    long *p_last = (long *)p_last_v;
+    int status = 0;
     epc_resource.start = epc_pa;
     epc_resource.end = epc_pa + epc_size - 1;
 
@@ -489,6 +489,7 @@ static int write_epc_bank_lime(u64 epc_pa, u64 epc_size, void *p_last_v) {
     else if (mode == LIME_MODE_PADDED && write_padding((size_t) ((epc_pa - 1) - (*p_last))) < 0) {
         DBG("Error writing padding 0x%lx - 0x%lx", (long) (*p_last), (long) epc_pa - 1);
         return 1;
+    }
 
     // Dump SGX pages in EPC bank
     epc_map = memremap(epc_pa, epc_size, MEMREMAP_WB);
