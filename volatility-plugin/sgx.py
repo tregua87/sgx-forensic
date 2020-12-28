@@ -65,7 +65,7 @@ class SGXEnclave:
         self.einfo["base"] = self.estruct.base
         self.einfo["size"] = self.estruct.m("size")
         self.einfo["flags"] = self.decode_flags()
-        self.einfo["xfrm"] = self.estruct.xfrm
+        self.einfo["xfrm"] = self.estruct.xfrm if driver == "isgx" else -1
         self.einfo["ssa_size"] = self.estruct.ssaframesize
 
         self.mode = mode
@@ -657,8 +657,7 @@ class SGXEnclave:
         # Check if all the reference in sgx_encl struct are valid
 
         if not self.estruct.backing.is_valid() or \
-           not self.estruct.va_pages.prev.is_valid() or \
-           not self.estruct.va_pages.next.is_valid():
+           not self.estruct.va_pages.prev.is_valid():
            return False
 
         if self.driver == "isgx":
@@ -706,13 +705,20 @@ class SGXEnclave:
             128: "KSS"
         }
 
+        if self.driver == "dcap":
+            flags_s = self.estruct.flags.counter
+            attributes_s = self.estruct.secs_attributes
+        else:
+            flags_s = self.estruct.flags
+            attributes_s = self.estruct.attributes
+
         flags_l = set()
         for pos, flag in flags.items():
-            if self.estruct.flags & pos:
+            if flags_s & pos:
                 flags_l.add(flag)
 
         for pos, attr in attributes.items():
-            if self.estruct.attributes & pos:
+            if attributes_s & pos:
                 flags_l.add(attr)
 
         flags_l = list(flags_l)
@@ -1191,8 +1197,6 @@ class linux_sgx(linux_common.AbstractLinuxCommand):
 
         # SGX pages has special VM flags enabled
         vm_flags = vm_area_struct.flags()
-        print(vm_flags)
-        print(vm_area_struct.vm_name(task_s).lower())
         if  "VM_PFNMAP" not in vm_flags or \
             "VM_DONTEXPAND" not in vm_flags or \
             "VM_IO" not in vm_flags:
