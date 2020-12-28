@@ -348,11 +348,11 @@ static void write_range(struct resource * res) {
 #ifdef LIME_SUPPORTS_TIMING
         end = ktime_get_real();
 
-        if (timeout > 0 && ktime_to_ms(ktime_sub(end, start)) > timeout) {
-            DBG("Reading is too slow.  Skipping Range...");
-            write_padding(res->end - i + 1 - is);
-            break;
-        }
+        // if (timeout > 0 && ktime_to_ms(ktime_sub(end, start)) > timeout) {
+        //     DBG("Reading is too slow.  Skipping Range...");
+        //     write_padding(res->end - i + 1 - is);
+        //     break;
+        // }
 #endif
 
     }
