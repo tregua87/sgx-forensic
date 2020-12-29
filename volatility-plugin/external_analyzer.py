@@ -3,6 +3,38 @@ from subprocess import Popen, PIPE, STDOUT
 
 class ExternalAnalyzerSGXSDK:
 
+    @staticmethod
+    def _look_reloc_symbol(bf, reloc_symbol):
+
+        for f in bf.cmdj("aflj"):
+            name = f["name"]
+            typ = f["type"]
+            minbound = f["minbound"]
+            maxbound = f["maxbound"]
+            offset = f["offset"]
+
+            pdfj = bf.cmdj("pdfj @ {}".format(name))
+
+            if not pdfj:
+                continue
+
+            # only one opcode
+            if len(pdfj["ops"]) != 1:
+                continue
+
+            op = pdfj["ops"][0]
+
+            # the only opcode is a "jmp qword"
+            if not op["disasm"].startswith("jmp qword"):
+                continue
+
+            # u'disasm': u'jmp qword [reloc.sgx_ecall]',
+            # the jmp has to point to the symbol
+            if reloc_symbol in op["disasm"]:
+                return offset
+
+        return None
+
     @staticmethod 
     def extract_interface(elfs_maps, ocall_table):
 
@@ -34,7 +66,7 @@ class ExternalAnalyzerSGXSDK:
 
         # from IPython import embed; embed(); exit()
         bf = r2pipe.open(file_main_elf, ["-2"])
-        bf.cmd("aaaaa")
+        bf.cmd("aaaaaa")
 
         # is that better?
         bf.cmd("aab")
@@ -45,38 +77,52 @@ class ExternalAnalyzerSGXSDK:
         sgx_ecall_add = None
         if sgx_ecall_sym:
             sgx_ecall_add = sgx_ecall_sym[0]["offset"]
+        else:
+            sgx_ecall_add = ExternalAnalyzerSGXSDK._look_reloc_symbol(bf, "reloc.sgx_ecall")
 
         # search for symbol sgx_ecall_switchless
         sgx_ecall_sw_sym = [f for f in bf.cmdj("aflj") if f["name"] == "sym.imp.sgx_ecall_switchless"]
         sgx_ecall_sw_add = None
         if sgx_ecall_sw_sym:
             sgx_ecall_sw_add = sgx_ecall_sw_sym[0]["offset"]
+        else:
+            sgx_ecall_sw_add = ExternalAnalyzerSGXSDK._look_reloc_symbol(bf, "reloc.sgx_ecall_switchless")
 
         # search for symbol sgx_create_enclave
         sgx_create_sym = [f for f in bf.cmdj("aflj") if f["name"] == "sym.imp.sgx_create_enclave"]
         sgx_create_add = None
         if sgx_create_sym:
             sgx_create_add = sgx_create_sym[0]["offset"]
+        else:
+            sgx_ecall_sw_add = ExternalAnalyzerSGXSDK._look_reloc_symbol(bf, "reloc.sgx_ecreate")
 
+        # print("new trick?")
         # from IPython import embed; embed(); exit()
+
+        # print("sgx_ecall_add 0x{:x}".format(sgx_ecall_add))
+        # print("sgx_ecall_sw_add 0x{:x}".format(sgx_ecall_sw_add))
+        # print("sgx_create_add 0x{:x}".format(sgx_create_add))
 
         for f in bf.cmdj("aflj"):
             # from IPython import embed; embed()
-            typ = f["type"]
+            # typ = f["type"]
 
             # just functions
-            if typ == "fcn":
-                # from IPython import embed; embed(); exit()
-                name = f["name"]
-                # print(name)
-                # from IPython import embed; embed()
-                minbound = f["minbound"]
-                maxbound = f["maxbound"]
+            # if typ == "fcn":
+            # from IPython import embed; embed(); exit()
+            name = f["name"]
+            # print(name)
+            # if name == "sym.jvm_ecall":
+            #     from IPython import embed; embed(); exit()
+            minbound = f["minbound"]
+            maxbound = f["maxbound"]
 
-                # if name == "fcn.000028a5":
-                # print(f"{typ} {name} 0x{minbound:02x} 0x{maxbound:02x}")
-                bf.cmd("s {}".format(name))
-                pdfj = bf.cmdj("pdfj")
+            # if name == "fcn.000028a5":
+            # print(f"{typ} {name} 0x{minbound:02x} 0x{maxbound:02x}")
+            bf.cmd("s {}".format(name))
+            pdfj = bf.cmdj("pdfj")
+
+            if pdfj:
                 has_ocall_optr = 0
                 has_call_sgxecall = False
                 has_call_sgxecallsw = False
@@ -519,6 +565,9 @@ class ExternalAnalyzerRUSTSDK:
 
             pdfj = bf.cmdj("pdfj @ {}".format(name))
 
+            if not pdfj:
+                continue
+
             # only one opcode
             if len(pdfj["ops"]) != 1:
                 continue
@@ -535,7 +584,7 @@ class ExternalAnalyzerRUSTSDK:
 
             pltjmp[offset] = ptr + base_addr
 
-            # if name == "fcn.000063b0":
+            # if name == "fcn.00023d80":
             #     from IPython import embed; embed(); exit()
 
             # I AM LOOKING FOR THESE GUYS!
@@ -562,14 +611,17 @@ class ExternalAnalyzerRUSTSDK:
             print("[ERROR] '{}' not found!".format(lib_name))
             exit()
 
+        print(file_lib)
+
         bf = r2pipe.open(file_lib, ["-2"])
-        bf.cmd("aaaaa")
+        bf.cmd("aaaaaa")
 
         # is that better?
         bf.cmd("aab")
         bf.cmd("aav")
 
         exported_fun = {}
+        # from IPython import embed; embed()
 
         # get exported symbol (!= imp.*)
         for s in bf.cmdj("isj"):

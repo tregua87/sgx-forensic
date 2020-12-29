@@ -40,7 +40,8 @@ class EPCBank:
         return self.start == other.start and self.end == other.end
 
 class SGXEnclave:
-    def __init__(self, parent_task, estruct, driver, mode, framework):
+    def __init__(self, parent_task, estruct, driver, mode, framework, main_elf):
+        
         self.parent_task = parent_task
         self.estruct = estruct
         self.driver = driver
@@ -48,6 +49,8 @@ class SGXEnclave:
         self.pinfo = {}
 
         self.framework = framework
+
+        self.main_elf = main_elf
 
         self.pinfo["pid"] = self.parent_task.pid
         self.pinfo["name"] = self.parent_task.comm
@@ -94,15 +97,15 @@ class SGXEnclave:
         elfs_map = self._dump_elfs()
 
         # for k, v in elfs_map.iteritems():
-        #     print("{} -> {}".format(k, v["file_path"]))
+        #     print("{} -> {} [{}]".format(k, v["file_path"], v["main"]))
         # exit()
 
         # print(elfs_map)
 
         task_t = self.parent_task
 
-        min_enclave = self.estruct.base
-        max_enclave = self.estruct.m("size")
+        # min_enclave = self.estruct.base
+        # max_enclave = self.estruct.m("size")
 
         framework_strategy = None
         if self.framework is None:
@@ -111,17 +114,17 @@ class SGXEnclave:
             framework_strategy = self.framework
 
         if framework_strategy == "sgxsdk":
-            ecreate, ecalls, ocalls = self._infer_interfaces_sgxsdk(task_t, elfs_map, min_enclave, max_enclave)
+            ecreate, ecalls, ocalls = self._infer_interfaces_sgxsdk(task_t, elfs_map)
         elif framework_strategy == "openenclave":
-            ecreate, ecalls, ocalls = self._infer_interfaces_openenclave(task_t, elfs_map, min_enclave, max_enclave)
+            ecreate, ecalls, ocalls = self._infer_interfaces_openenclave(task_t, elfs_map)
         elif framework_strategy == "asylo":
-            ecreate, ecalls, ocalls = self._infer_interfaces_asylo(task_t, elfs_map, min_enclave, max_enclave)
+            ecreate, ecalls, ocalls = self._infer_interfaces_asylo(task_t, elfs_map)
         elif framework_strategy == "graphene":
-            ecreate, ecalls, ocalls = self._infer_interfaces_graphene(task_t, elfs_map, min_enclave, max_enclave)
+            ecreate, ecalls, ocalls = self._infer_interfaces_graphene(task_t, elfs_map)
         elif framework_strategy == "sgxlkl":
-            ecreate, ecalls, ocalls = self._infer_interfaces_sgxlkl(task_t, elfs_map, min_enclave, max_enclave)
+            ecreate, ecalls, ocalls = self._infer_interfaces_sgxlkl(task_t, elfs_map)
         elif framework_strategy == "rustsdk":
-            ecreate, ecalls, ocalls = self._infer_interfaces_rustsdk(task_t, elfs_map, min_enclave, max_enclave)
+            ecreate, ecalls, ocalls = self._infer_interfaces_rustsdk(task_t, elfs_map)
         else:
             ecreate, ecalls, ocalls = [], [], []
 
@@ -144,18 +147,30 @@ class SGXEnclave:
 
         return None
 
-    def _find_ecall_token_table(self, task, min_enclave, max_enclave):
+    def _find_ecall_token_table(self, elfs_map, task):
         valid_ascii = string.ascii_letters + string.digits + '_'
 
         possible_ecalls = list()
         possible_ecalls_size = list()
         possible_ecall_table_content = {}
 
+        elf_name = None
+        elf_start = None
+        elf_end = None
+
+        for k, v in elfs_map.iteritems():
+            if v["main"]:
+                elf_name = k #v["file_path"]
+                elf_start = v["vm_start"]
+                elf_end = v["vm_end"]
+                break
+
+        if not elf_name:
+            print("Cannot find main ELF")
+            exit()
+
         # to read things
         proc_as = task.get_process_address_space()
-
-        elf_name = None
-        base_address = None
 
         for vma in task.get_proc_maps():
             vm_start = int(vma.vm_start)
@@ -164,20 +179,12 @@ class SGXEnclave:
 
             (fname, major, minor, ino, pgoff) = vma.info(task)
 
-            if not elf_name:
-                elf_name = fname
-                base_address = vm_start
-
-            # exclude enclave pages
-            if vm_start >= min_enclave and vm_end <= max_enclave:
-                continue
-
             # exclude pages not belonging to main ELF
-            if fname != elf_name:
+            if elf_name not in fname:
                 continue
 
-            # not executable pages
-            if vma.vm_flags.is_executable():
+            # exclude exec pages
+            if vma.vm_flags.is_writable():
                 continue
 
             # print("0x{:x} 0x{:x} {} {}".format(vm_start, vm_end, vm_flags, fname))
@@ -286,7 +293,7 @@ class SGXEnclave:
 
         return possible_ecall_table_content
 
-    def _find_possible_ocall_table2(self, task, min_enclave, max_enclave):
+    def _find_possible_ocall_table2(self, elfs_map, task):
 
         possible_ocalls = list()
         possible_ocalls_size = list()
@@ -295,7 +302,19 @@ class SGXEnclave:
         proc_as = task.get_process_address_space()
 
         elf_name = None
-        base_address = None
+        elf_start = None
+        elf_end = None
+
+        for k, v in elfs_map.iteritems():
+            if v["main"]:
+                elf_name = k #v["file_path"]
+                elf_start = v["vm_start"]
+                elf_end = v["vm_end"]
+                break
+
+        if not elf_name:
+            print("Cannot find main ELF")
+            exit()
 
         for vma in task.get_proc_maps():
             vm_start = int(vma.vm_start)
@@ -304,20 +323,12 @@ class SGXEnclave:
 
             (fname, major, minor, ino, pgoff) = vma.info(task)
 
-            # exclude enclave pages
-            if vm_start >= min_enclave and vm_end <= max_enclave:
+            # exclude pages not belonging to main ELF
+            if elf_name not in fname:
                 continue
 
             # exclude exec pages
-            if vma.vm_flags.is_executable():
-                continue
-
-            if not elf_name:
-                elf_name = fname
-                base_address = vm_start
-
-            # exclude pages not belonging to main ELF
-            if fname != elf_name:
+            if vma.vm_flags.is_writable():
                 continue
 
             offset = vm_start
@@ -367,14 +378,29 @@ class SGXEnclave:
 
         return (possible_ocalls, possible_ocalls_size)
 
-    def _find_possible_ocall_table(self, task, min_enclave, max_enclave):
+    def _find_possible_ocall_table(self, elfs_map, task):
 
         possible_ocalls = []
         # to read things
         proc_as = task.get_process_address_space()
 
         elf_name = None
-        base_address = None
+        elf_start = None
+        elf_end = None
+
+        for k, v in elfs_map.iteritems():
+            if v["main"]:
+                elf_name = k #v["file_path"]
+                elf_start = v["vm_start"]
+                elf_end = v["vm_end"]
+                break
+
+        if not elf_name:
+            print("Cannot find main ELF")
+            exit()
+
+        # from IPython import embed; embed()
+
 
         for vma in task.get_proc_maps():
             vm_start = int(vma.vm_start)
@@ -383,25 +409,17 @@ class SGXEnclave:
 
             (fname, major, minor, ino, pgoff) = vma.info(task)
 
-            if not elf_name:
-                elf_name = fname
-                base_address = vm_start
-
-            # exclude enclave pages
-            if vm_start >= min_enclave and vm_end <= max_enclave:
-                continue
+            # print("probe: {} 0x{:x} 0x{:x} {}".format(fname, vm_start, vm_end, vm_flags))
 
             # exclude pages not belonging to main ELF
-            if fname != elf_name:
+            if elf_name not in fname:
                 continue
 
             # exclude exec pages
-            if vma.vm_flags.is_executable():
+            if vma.vm_flags.is_writable():
                 continue
 
-            # print("0x{:x} 0x{:x} {} {}".format(vm_start, vm_end, vm_flags, fname))
-
-            # from IPython import embed; embed(); exit()
+            # print("seek: {} 0x{:x} 0x{:x} {}".format(fname, vm_start, vm_end, vm_flags))
 
             offset = vm_start
             max_offset = vm_end
@@ -411,19 +429,25 @@ class SGXEnclave:
 
             while offset <= max_offset:
 
+                # print("offset 0x{:x}".format(offset))
                 x = unpack("<Q", b)[0]
 
-                if x and x < 10000:
-                    # x_add = great_idx.from_offset_to_vaddr(offset)
-                    # print(f"[TRY] 0x{x:02x} @ 0x{x_add:02x}")
+                # if offset == 0x7fb1a24cf980:
+                #     from IPython import embed; embed()
+
+                # print("offset 0x{:x}".format(offset))
+
+                if x > 0 and x < 1000:
                     n_add_exec = 0
                     for i in range(x):
                         maybe_add_fun_bytes = proc_as.zread(offset + i*8, 8)
                         maybe_add_fun = unpack("<Q", maybe_add_fun_bytes)[0]
+                        # idx_line = self._get_line(maybe_add_fun, task)
                         idx_line = self._get_line(maybe_add_fun, task)
                         if idx_line:
-                            if "x" in idx_line[0] and "w" not in idx_line[0] and "r" in idx_line[0] and idx_line[1] == elf_name:
-                                # print("[OK!] 0x{:0}".format(maybe_add_fun))
+                            # if "x" in idx_line[0] and "w" not in idx_line[0] and "r" in idx_line[0] and idx_line[1] == elf_name:
+                            if "x" in idx_line[0] and "w" not in idx_line[0] and "r" in idx_line[0] and elf_name in idx_line[1]:
+                                # print("[OK!] 0x{:02x}".format(maybe_add_fun))
                                 n_add_exec += 1
                             else:
                                 # print("[STOP]")
@@ -434,7 +458,7 @@ class SGXEnclave:
 
                     if n_add_exec == x:
                         ocall_addr = offset - 8
-                        # print("[OK!] A possible ocall_table @ 0x{:02x} (0x{:02x}) with {} ocall".format(ocall_addr, ocall_addr-base_address, x))
+                        # print("[OK!] A possible ocall_table @ 0x{:02x} (0x{:02x}) with {} ocall".format(ocall_addr, ocall_addr-elf_start, x))
                         possible_ocalls += [ocall_addr]
 
                 b =  proc_as.zread(offset, 8)
@@ -444,9 +468,9 @@ class SGXEnclave:
         # print(" ".join(["0x{:02x}".format(o) for o in possible_ocalls]))
         return possible_ocalls
 
-    def _infer_interfaces_sgxsdk(self, task, elfs_map, min_enclave, max_enclave):
+    def _infer_interfaces_sgxsdk(self, task, elfs_map):
 
-        possible_ocalls = self._find_possible_ocall_table(task, min_enclave, max_enclave)
+        possible_ocalls = self._find_possible_ocall_table(elfs_map, task)
 
         try:
             ecreate, ecalls, ocall_tables = ExternalAnalyzerSGXSDK.extract_interface(elfs_map, possible_ocalls)
@@ -470,11 +494,13 @@ class SGXEnclave:
 
         return ecreate, ecalls, ocalls
 
-    def _infer_interfaces_rustsdk(self, task, elfs_map, min_enclave, max_enclave):
+    def _infer_interfaces_rustsdk(self, task, elfs_map):
 
         pltjmp = ExternalAnalyzerRUSTSDK.extract_pltjmp(elfs_map)
+        print(pltjmp)
 
         exported_fun = ExternalAnalyzerRUSTSDK.extract_exported_fun(elfs_map, "libsgx_urts.so")
+        print(exported_fun)
 
         # get libsgx_urts.so base address
         libsgx_urts_ba = None
@@ -505,11 +531,12 @@ class SGXEnclave:
 
             # print("0x{:x} -> 0x{:x} -> 0x{:x} -> 0x{:x} | [{}]".format(k, v, ptr_add, ptr_add_rel, fun_name))
 
-        # print("")
-        # for f, n in plt_decoded.iteritems():
-        #     print("0x{:x} => {}".format(f, n))
+        print("")
+        for f, n in plt_decoded.iteritems():
+            print("0x{:x} => {}".format(f, n))
+        exit()
 
-        possible_ocall_table = self.find_possible_ocall_table(task, min_enclave, max_enclave)
+        possible_ocall_table = self._find_possible_ocall_table(elfs_map, task)
 
         try:
             ecalls, ocall_tables = ExternalAnalyzerRUSTSDK.extract_interface(elfs_map, possible_ocall_table, plt_decoded)
@@ -533,9 +560,9 @@ class SGXEnclave:
 
         return [], ecalls, ocalls
 
-    def _infer_interfaces_sgxlkl(self, task, elfs_map, min_enclave, max_enclave):
+    def _infer_interfaces_sgxlkl(self, task, elfs_map):
 
-        (possible_ocall_table, possible_ocall_table_size) = self.find_possible_ocall_table2(task, min_enclave, max_enclave)
+        (possible_ocall_table, possible_ocall_table_size) = self._find_possible_ocall_table2(elfs_map, task)
         # print("Number of possible ocall_table found: {}".format(len(possible_ocall_table)))
 
         ecreate, ecalls, ocall_tables, ocall_table_size = ExternalAnalyzerSGXLKL.extract_interface(elfs_map, possible_ocall_table, possible_ocall_table_size)
@@ -552,11 +579,11 @@ class SGXEnclave:
 
         return ecreate, ecalls, ocalls
 
-    def _infer_interfaces_graphene(self, task, elfs_map, min_enclave, max_enclave):
+    def _infer_interfaces_graphene(self, task, elfs_map):
 
         # print(elfs_map)
 
-        (possible_ocall_table, possible_ocall_table_size) = self.find_possible_ocall_table2(task, min_enclave, max_enclave)
+        (possible_ocall_table, possible_ocall_table_size) = self._find_possible_ocall_table2(elfs_map, task)
         # print("Number of possible ocall_table found: {}".format(len(possible_ocall_table)))
 
         ecalls, ocall_tables, ocall_table_size = ExternalAnalyzerGRAPHENE.extract_interface(elfs_map, possible_ocall_table, possible_ocall_table_size)
@@ -573,22 +600,22 @@ class SGXEnclave:
 
         return [], ecalls, ocalls
 
-    def _infer_interfaces_asylo(self, task, elfs_map, min_enclave, max_enclave):
+    def _infer_interfaces_asylo(self, task, elfs_map):
 
         ecalls = ExternalAnalyzerASYLO.extract_interface(elfs_map)
 
         return [], ecalls, []
 
-    def _infer_interfaces_openenclave(self, task, elfs_map, min_enclave, max_enclave):
+    def _infer_interfaces_openenclave(self, task, elfs_map):
 
         ecreate = []
         ecalls = []
         ocalls = []
 
-        (possible_ocall_table, possible_ocall_table_size) = self.find_possible_ocall_table2(task, min_enclave, max_enclave)
+        (possible_ocall_table, possible_ocall_table_size) = self._find_possible_ocall_table2(elfs_map, task)
         # print("Number of possible ocall_table found: {}".format(len(possible_ocall_table)))
 
-        possible_ecall_table_content = self.find_ecall_token_table(task, min_enclave, max_enclave)
+        possible_ecall_table_content = self._find_ecall_token_table(elfs_map, task)
         # print("Number of possible ecall_token_table found: {}".format(len(possible_ecall_table)))
 
         ecreate, ecalls, ocall_tables, ocall_table_size = ExternalAnalyzerOE.extract_interface(elfs_map, possible_ocall_table, possible_ocall_table_size, possible_ecall_table_content)
@@ -641,7 +668,7 @@ class SGXEnclave:
 
         task = self.parent_task
 
-        elf_main = task.mm.start_code
+        prv_main_elf = self.main_elf if self.main_elf != 0 else  task.mm.start_code
 
         for elf, elf_start, elf_end, soname, needed in task.elfs():
             file_path = linux_common.write_elf_file(tmpfolder, task, elf.v())
@@ -649,7 +676,7 @@ class SGXEnclave:
             elfs_map[soname]["file_path"] = file_path
             elfs_map[soname]["vm_start"] = elf_start
             elfs_map[soname]["vm_end"] = elf_end
-            elfs_map[soname]["main"] = elf_main == elf_start
+            elfs_map[soname]["main"] = prv_main_elf == elf_start
 
         return elfs_map
 
@@ -992,6 +1019,9 @@ class linux_sgx(linux_common.AbstractLinuxCommand):
         self._config.add_option('FRAMEWORK', default = None,
                     help = 'Force the plugin to use a specific framework strategy to infer the enclave interface <{}>'.format(framework_supported_str),
                     action = 'store', type = 'str')
+        self._config.add_option('MAINELF', default = 0x0,
+                    help = 'Base virtual address of the main ELF object of a given process (using with PID or OFFSET)',
+                    action = 'store', type = 'int')
 
         self.mode = -1
 
@@ -1138,7 +1168,7 @@ class linux_sgx(linux_common.AbstractLinuxCommand):
                         for epc_bank in self.epc_banks:
                             if epc_bank.start <= phy_pg_addr <= epc_bank.end:
                                 try:
-                                    enclave = SGXEnclave(task, task, None, self._config.ANALYSIS, self._config.FRAMEWORK)
+                                    enclave = SGXEnclave(task, task, None, self._config.ANALYSIS, self._config.FRAMEWORK, self._config.MAINELF)
                                     enclaves.append(enclave)
                                     raise StopIteration
                                 except ValueError:
@@ -1155,7 +1185,7 @@ class linux_sgx(linux_common.AbstractLinuxCommand):
             enclaves_s = self.find_sgx_enclaves_host_proc(task, driver)
             for estruct in enclaves_s:
                 try:
-                    enclave = SGXEnclave(task, estruct, driver, self._config.ANALYSIS, self._config.FRAMEWORK)
+                    enclave = SGXEnclave(task, estruct, driver, self._config.ANALYSIS, self._config.FRAMEWORK, self._config.MAINELF)
                     enclaves.add(enclave)
                 except ValueError:
                     continue
@@ -1168,7 +1198,7 @@ class linux_sgx(linux_common.AbstractLinuxCommand):
             encl = encl_obj.estruct
             for nxt_encl in encl.encl_list.list_of_type("sgx_encl_isgx", "encl_list"):
                 try:
-                    enclave = SGXEnclave(task, nxt_encl, driver, self._config.ANALYSIS, self._config.FRAMEWORK)
+                    enclave = SGXEnclave(task, nxt_encl, driver, self._config.ANALYSIS, self._config.FRAMEWORK, self._config.MAINELF)
                     enclaves.add(enclave)
                 except ValueError:
                     continue

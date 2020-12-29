@@ -11,6 +11,7 @@ Plugin Options:
 - PID (--pid, -p): Operate on this Process ID
 - OFFSET (--offset, -o): Operate on this Offset
 - EBASE (--ebase): Operate on this Enclave virtual address
+- MAINELF (--mainelf): Base virtual address of the main ELF object of a given process (using with PID or OFFSET)
 - DUMP-DIR (--dump-dir, -D): Output directory for enclaves ELFs
 - ANALYSIS (--analysis, -a): Indicate which type of analysis performs over the enclave (I = Interface, M = Memory, B = Both)
 - FRAMEWORK (--framework): Force the plugin to use a specific framework strategy to infer the enclave interface <sgxsdk|openenclave|asylo|graphene|sgxlkl|rustsdk>
@@ -53,6 +54,8 @@ The plugin implements two analysis, that can be tuned with option `ANALYSIS`:
 - Memory Analysis (i.e., `-a M`): look for patterns in the enclave memory.
 - Interface Analysis (i.e., `-a I`): look for interface information in the enclave. You can further indicate the SDX framework used with the option `FRAMEWORK`.
 - Both memory and interface analysis (i.e., `-a B`, or default behavior): the plugin performs both memory and interface analysis.
+
+If the main ELF differs from the one located by Volatility (e.g., it happens for Java applications, but not only), you can manually indicate the main ELF base address through `MAINELF` (e.g, `--mainelf 0x7fb1a248d000`).
 
 ```bash
 PLUGIN_DIR=$HOME/sgx-forensic-2/volatility-plugin/
