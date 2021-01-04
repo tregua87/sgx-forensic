@@ -80,7 +80,7 @@ class ExternalAnalyzerSGXSDK:
         else:
             sgx_ecall_add = ExternalAnalyzerSGXSDK._look_reloc_symbol(bf, "reloc.sgx_ecall")
 
-        print("sgx_ecall_add 0x{:x}".format(sgx_ecall_add))
+        # print("sgx_ecall_add 0x{:x}".format(sgx_ecall_add))
 
         # search for symbol sgx_ecall_switchless
         sgx_ecall_sw_sym = [f for f in bf.cmdj("aflj") if f["name"] == "sym.imp.sgx_ecall_switchless"]
