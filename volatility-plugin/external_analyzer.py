@@ -80,6 +80,8 @@ class ExternalAnalyzerSGXSDK:
         else:
             sgx_ecall_add = ExternalAnalyzerSGXSDK._look_reloc_symbol(bf, "reloc.sgx_ecall")
 
+        print("sgx_ecall_add 0x{:x}".format(sgx_ecall_add))
+
         # search for symbol sgx_ecall_switchless
         sgx_ecall_sw_sym = [f for f in bf.cmdj("aflj") if f["name"] == "sym.imp.sgx_ecall_switchless"]
         sgx_ecall_sw_add = None
@@ -140,12 +142,12 @@ class ExternalAnalyzerSGXSDK:
                     if "jump" in o and o["jump"] == sgx_create_add:
                         has_call_sgxcreate = True
 
-                if has_call_sgxecall and has_ocall_optr:
+                if has_call_sgxecall and (not ocall_table_norm or has_ocall_optr):
                     # print("[ECALL] {} | ocall_table @ 0x{:02x}".format(name, has_ocall_optr))
                     ocall_table_confirmed.add(has_ocall_optr)
                     ecalls.add(minbound + base_addr)
 
-                if has_call_sgxecallsw and has_ocall_optr:
+                if has_call_sgxecallsw and (not ocall_table_norm or has_ocall_optr):
                     # print("[ECALL SWITCHLESS] {} | ocall_table @ 0x{:02x}0".format(name, has_ocall_optr))
                     ocall_table_confirmed.add(has_ocall_optr)
                     ecalls.add(minbound + base_addr)

@@ -1194,7 +1194,7 @@ class linux_sgx(linux_common.AbstractLinuxCommand):
         if not enclaves or driver != "isgx":
             return list(enclaves)
 
-        for encl_obj in enclaves:
+        for encl_obj in enclaves.copy():
             encl = encl_obj.estruct
             for nxt_encl in encl.encl_list.list_of_type("sgx_encl_isgx", "encl_list"):
                 try:
@@ -1203,7 +1203,7 @@ class linux_sgx(linux_common.AbstractLinuxCommand):
                 except ValueError:
                     continue
 
-        return list(enclaves)
+        return set(enclaves)
 
     def find_sgx_enclaves_host_proc(self, task_s, driver_name):
         """Explore the memory space of a process to find SGX enclaves loaded by Intel drivers"""
