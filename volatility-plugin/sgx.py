@@ -41,7 +41,7 @@ class EPCBank:
 
 class SGXEnclave:
     def __init__(self, parent_task, estruct, driver, mode, framework, main_elf):
-        
+
         self.parent_task = parent_task
         self.estruct = estruct
         self.driver = driver
@@ -1156,6 +1156,11 @@ class linux_sgx(linux_common.AbstractLinuxCommand):
         enclaves = []
         print("Look for hidden enclaves... very slow!")
         for task in proc_iter:
+
+            # Ignore kernel tasks
+            if (task.flags & 0x200000):
+                continue
+
             task_addr_sp = task.get_process_address_space()
             try:
                 for vma in task.get_proc_maps():
@@ -1182,6 +1187,11 @@ class linux_sgx(linux_common.AbstractLinuxCommand):
         """Look for enclaves using Intel SGX drivers structs"""
         enclaves = set()
         for task in proc_iter:
+
+            # Ignore kernel tasks
+            if (task.flags & 0x200000):
+                continue
+
             enclaves_s = self.find_sgx_enclaves_host_proc(task, driver)
             for estruct in enclaves_s:
                 try:
@@ -1198,12 +1208,12 @@ class linux_sgx(linux_common.AbstractLinuxCommand):
             encl = encl_obj.estruct
             for nxt_encl in encl.encl_list.list_of_type("sgx_encl_isgx", "encl_list"):
                 try:
-                    enclave = SGXEnclave(task, nxt_encl, driver, self._config.ANALYSIS, self._config.FRAMEWORK, self._config.MAINELF)
+                    enclave = SGXEnclave(nxt_encl.mm.owner, nxt_encl, driver, self._config.ANALYSIS, self._config.FRAMEWORK, self._config.MAINELF)
                     enclaves.add(enclave)
                 except ValueError:
                     continue
 
-        return set(enclaves)
+        return list(enclaves)
 
     def find_sgx_enclaves_host_proc(self, task_s, driver_name):
         """Explore the memory space of a process to find SGX enclaves loaded by Intel drivers"""
