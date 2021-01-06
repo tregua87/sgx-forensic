@@ -52,9 +52,10 @@ class ExternalAnalyzerSGXSDK:
 
         ocall_table_norm = [o-base_addr for o in ocall_table]
 
-        ocall_table_confirmed = set()
-        ecalls = set()
+        # ocall_table_confirmed = set()
+        # ecalls = set()
         ecreates = set()
+        pair_ecall_ocall_table_raw = set()
 
 
         # stdout_old = sys.stdout
@@ -144,19 +145,49 @@ class ExternalAnalyzerSGXSDK:
 
                 if has_call_sgxecall and (not ocall_table_norm or has_ocall_optr):
                     # print("[ECALL] {} | ocall_table @ 0x{:02x}".format(name, has_ocall_optr))
-                    ocall_table_confirmed.add(has_ocall_optr)
-                    ecalls.add(minbound + base_addr)
+                    # ocall_table_confirmed.add(has_ocall_optr)
+                    # ecalls.add(minbound + base_addr)
+                    pair_ecall_ocall_table_raw.add((minbound + base_addr, has_ocall_optr))
 
                 if has_call_sgxecallsw and (not ocall_table_norm or has_ocall_optr):
                     # print("[ECALL SWITCHLESS] {} | ocall_table @ 0x{:02x}0".format(name, has_ocall_optr))
-                    ocall_table_confirmed.add(has_ocall_optr)
-                    ecalls.add(minbound + base_addr)
+                    # ocall_table_confirmed.add(has_ocall_optr)
+                    # ecalls.add(minbound + base_addr)
+                    pair_ecall_ocall_table_raw.add((minbound + base_addr, has_ocall_optr))
 
                 if has_call_sgxcreate:
                     ecreates.add(minbound + base_addr)
 
+        # print(pair_ecall_ocall_table_raw)
+
+        pair_ecall_ocall_table = []
+        
+        ocall_table_last = None
+        ecall_set = set()
+        for i, (ecall, ocall_table) in enumerate(sorted(pair_ecall_ocall_table_raw, key=lambda el: el[1])):
+            
+            # print(i)
+            # print(pair_ecall_ocall_table)
+            # print("{} {}".format(ecall, ocall_table))
+            # print("ocall last {}".format(ocall_table_last))
+
+            if ocall_table_last is None:
+                ocall_table_last = ocall_table
+                ecall_set = set()
+
+            if ocall_table_last != ocall_table:
+                pair_ecall_ocall_table.append((list(ecall_set), ocall_table_last))
+
+                ocall_table_last = ocall_table
+                ecall_set = set()
+
+            ecall_set.add(ecall)
+
+        pair_ecall_ocall_table.append((list(ecall_set), ocall_table))
+            
+
         # return [ecreate], [ecalls], [ocalls]
-        return ecreates, ecalls, ocall_table_confirmed
+        return ecreates, pair_ecall_ocall_table
 
 class ExternalAnalyzerOE:
 
@@ -186,14 +217,15 @@ class ExternalAnalyzerOE:
             possible_ecall_table_size += [len(ec_cnt)]
 
         ecall_table_norm = [e-base_addr for e in possible_ecall_table]
-        ecall_table_confirmed = list()
-        ecall_table_size_confirmed = list()
+        # ecall_table_confirmed = list()
+        # ecall_table_size_confirmed = list()
 
-        ecalls = []
+        # ecalls = []
         ecreates = []
+        pair_ecall_ocalltable_ocalltablesize_raw = set()
 
         bf = r2pipe.open(file_main_elf, ["-2"])
-        bf.cmd("aaaaa")
+        bf.cmd("aaaaaa")
 
         # search for create enclave
         for f in bf.cmdj("aflj"):
@@ -226,44 +258,84 @@ class ExternalAnalyzerOE:
                 if has_ocall_ptr and has_ecall_ptr:
                     # print("[ECREATE] {} | ocall_table @ 0x{:02x} ecall_table @ 0x{:02x}".format(name, has_ocall_ptr, has_ecall_ptr))
                     # from IPython import embed; embed(); exit()
-                    ocall_table_confirmed += [has_ocall_ptr]
-                    ocall_table_size_confirmed += [possible_ocall_table_size[possible_ocall_table.index(has_ocall_ptr)] ]
-                    ecall_table_confirmed += [has_ecall_ptr]
-                    ecall_table_size_confirmed += [possible_ecall_table_size[possible_ecall_table.index(has_ecall_ptr)] ]
+
+                    ocall_table_size = possible_ocall_table_size[possible_ocall_table.index(has_ocall_ptr)]
+
+                    pair_ecall_ocalltable_ocalltablesize_raw.add((has_ecall_ptr, has_ocall_ptr, ocall_table_size))
+
+                    # ocall_table_confirmed += [has_ocall_ptr]
+                    # ocall_table_size_confirmed += [possible_ocall_table_size[possible_ocall_table.index(has_ocall_ptr)] ]
+                    # ecall_table_confirmed += [has_ecall_ptr]
+                    # ecall_table_size_confirmed += [possible_ecall_table_size[possible_ecall_table.index(has_ecall_ptr)] ]
                     ecreates += [f["offset"] + base_addr]
 
-        ecall_info_str_flat = set()
-        for ec in ecall_table_confirmed:
-            for ptr in possible_ecall_table_content[ec]:
+        # ecall_info_str_flat = set()
+        # for ec in ecall_table_confirmed:
+        #     for ptr in possible_ecall_table_content[ec]:
+        #         ecall_info_str_flat.add(ptr-base_addr)
+
+        pair_ecall_ocalltable_ocalltablesize = []
+
+        ocall_table_last = None
+        ocall_table_size_last = 0
+        ecall_set = set()
+        ocall_table = None
+        ocall_table_size = 0
+        for i, (ecall_token_table, ot, ots) in enumerate(sorted(pair_ecall_ocalltable_ocalltablesize_raw, key=lambda el: el[1])):
+
+            ocall_table_size = ots
+            ocall_table = ot
+            
+            # print(i)
+            # print(pair_ecall_ocall_table)
+            # print("{} {}".format(ecall, ocall_table))
+            # print("ocall last {}".format(ocall_table_last))
+
+            if ocall_table_last is None:
+                ocall_table_last = ocall_table
+                ocall_table_size_last = ocall_table_size
+                ecall_set = set()
+
+            if ocall_table_last != ocall_table:
+                pair_ecall_ocalltable_ocalltablesize.append((list(ecall_set), ocall_table_last, ocall_table_size_last))
+
+                ocall_table_last = ocall_table
+                ocall_table_size_last = ocall_table_size
+                ecall_set = set()
+
+            ecall_info_str_flat = set()
+            for ptr in possible_ecall_table_content[ecall_token_table]:
                 ecall_info_str_flat.add(ptr-base_addr)
 
-        # search for ecall enclave
-        for f in bf.cmdj("aflj"):
-            name = f["name"]
-            typ = f["type"]
-            minbound = f["minbound"]
-            maxbound = f["maxbound"]
+             # search for ecall enclave
+            for f in bf.cmdj("aflj"):
+                name = f["name"]
+                typ = f["type"]
+                minbound = f["minbound"]
+                maxbound = f["maxbound"]
+                fun_addr = f["offset"] + base_addr
 
-            # print(name)
-            # continue
+                # print(name)
+                # continue
 
-            if typ == "fcn":
-                bf.cmd("s {}".format(name))
-                pdfj = bf.cmdj("pdfj")
-                has_ecall_info_ptr = False
+                if typ == "fcn":
+                    bf.cmd("s {}".format(name))
+                    pdfj = bf.cmdj("pdfj")
+                    has_ecall_info_ptr = False
 
-                for o in pdfj["ops"]:
-                    if "ptr" in o and o["ptr"] in ecall_info_str_flat and "esil" in o and "rdx" in o["esil"]:
-                        has_ecall_info_ptr = True
-                        break
+                    for o in pdfj["ops"]:
+                        if "ptr" in o and o["ptr"] in ecall_info_str_flat and "esil" in o and "rdx" in o["esil"]:
+                            has_ecall_info_ptr = True
+                            break
 
-                if has_ecall_info_ptr:
-                    fun_addr = f["offset"] + base_addr
-                    # print("[ECALL] 0x{:02x}".format(fun_addr))
-                    ecalls += [fun_addr]
+                    if has_ecall_info_ptr:
+                        # print("[ECALL] 0x{:02x}".format(fun_addr))
+                        ecall_set.add(fun_addr)
 
-        # return [ecreate], [ecalls], [ocalls]
-        return ecreates, ecalls, ocall_table_confirmed, ocall_table_size_confirmed
+        pair_ecall_ocalltable_ocalltablesize.append((list(ecall_set), ocall_table, ocall_table_size))
+
+        return ecreates, pair_ecall_ocalltable_ocalltablesize
+        # return ecreates, ecalls, ocall_table_confirmed, ocall_table_size_confirmed
 
 class ExternalAnalyzerASYLO:
 
@@ -285,7 +357,7 @@ class ExternalAnalyzerASYLO:
         ecalls = []
 
         bf = r2pipe.open(file_main_elf)
-        bf.cmd("aaaaa")
+        bf.cmd("aaaaaa")
 
         # from IPython import embed; embed()
         # serach for enclu
@@ -373,7 +445,7 @@ class ExternalAnalyzerGRAPHENE:
         ocall_table_size_confirmed = list()
 
         bf = r2pipe.open(file_main_elf, ["-2"])
-        bf.cmd("aaaaa")
+        bf.cmd("aaaaaa")
 
         # is that better?
         bf.cmd("aab")
@@ -468,7 +540,7 @@ class ExternalAnalyzerSGXLKL:
         ecreate = []
 
         bf = r2pipe.open(file_main_elf, ["-2"])
-        bf.cmd("aaaaa")
+        bf.cmd("aaaaaa")
 
         # search for create enclave
         for f in bf.cmdj("aflj"):
@@ -550,7 +622,7 @@ class ExternalAnalyzerRUSTSDK:
             exit()
 
         bf = r2pipe.open(file_main_elf, ["-2"])
-        bf.cmd("aaaaa")
+        bf.cmd("aaaaaa")
 
         # is that better?
         bf.cmd("aab")
@@ -613,7 +685,7 @@ class ExternalAnalyzerRUSTSDK:
             print("[ERROR] '{}' not found!".format(lib_name))
             exit()
 
-        print(file_lib)
+        # print(file_lib)
 
         bf = r2pipe.open(file_lib, ["-2"])
         bf.cmd("aaaaaa")
@@ -657,12 +729,13 @@ class ExternalAnalyzerRUSTSDK:
 
         ocall_table_norm = [o-base_addr for o in possible_ocall_table]
 
-        ocall_table_confirmed = set()
-        ecalls = set()
+        # ocall_table_confirmed = set()
+        # ecalls = set()
+        pair_ecall_ocall_table_raw = []
 
         # from IPython import embed; embed(); exit()
         bf = r2pipe.open(file_main_elf, ["-2"])
-        bf.cmd("aaaaa")
+        bf.cmd("aaaaaa")
 
         # is that better?
         bf.cmd("aab")
@@ -719,18 +792,45 @@ class ExternalAnalyzerRUSTSDK:
 
                 if has_call_sgxecall and has_ocall_optr:
                     # print("[ECALL] {} | ocall_table @ 0x{:02x}".format(name, has_ocall_optr))
-                    ocall_table_confirmed.add(has_ocall_optr)
-                    ecalls.add(minbound + base_addr)
+                    pair_ecall_ocall_table_raw.append((minbound + base_addr, has_ocall_optr))
+                    # ocall_table_confirmed.add(has_ocall_optr)
+                    # ecalls.add(minbound + base_addr)
 
                 if has_call_sgxecallsw and has_ocall_optr:
                     # print("[ECALL SWITCHLESS] {} | ocall_table @ 0x{:02x}0".format(name, has_ocall_optr))
-                    ocall_table_confirmed.add(has_ocall_optr)
-                    ecalls.add(minbound + base_addr)
+                    pair_ecall_ocall_table_raw.append((minbound + base_addr, has_ocall_optr))
+                    # ocall_table_confirmed.add(has_ocall_optr)
+                    # ecalls.add(minbound + base_addr)
+
+        pair_ecall_ocall_table = []
+        
+        ocall_table_last = None
+        ecall_set = set()
+        for ecall, ocall_table in sorted(pair_ecall_ocall_table_raw, key=lambda el: el[1]):
+            
+            # print(i)
+            # print(pair_ecall_ocall_table)
+            # print("{} {}".format(ecall, ocall_table))
+            # print("ocall last {}".format(ocall_table_last))
+
+            if ocall_table_last is None:
+                ocall_table_last = ocall_table
+                ecall_set = set()
+
+            if ocall_table_last != ocall_table:
+                pair_ecall_ocall_table.append((list(ecall_set), ocall_table_last))
+
+                ocall_table_last = ocall_table
+                ecall_set = set()
+
+            ecall_set.add(ecall)
+
+        pair_ecall_ocall_table.append((list(ecall_set), ocall_table))
 
         # return [ecalls], [ocalls]
-        return ecalls, ocall_table_confirmed
+        return pair_ecall_ocall_table
 
-class ExternalAnalyzerHEURISTICS:
+class ExternalAnalyzerFINGERPRINT:
 
     @staticmethod
     def _get_string(elfs_map):
@@ -762,7 +862,7 @@ class ExternalAnalyzerHEURISTICS:
             exit()
 
         bf = r2pipe.open(file_lib, ["-2"])
-        bf.cmd("aaaaa")
+        bf.cmd("aaaaaa")
 
         # is that better?
         bf.cmd("aab")
@@ -790,7 +890,7 @@ class ExternalAnalyzerHEURISTICS:
         
         has_libsgx_urts = any( [ "libsgx_urts.so" in k for k in elfs_map.keys() ] )
 
-        imp_fcts = ExternalAnalyzerHEURISTICS._get_imported_functions(elfs_map)
+        imp_fcts = ExternalAnalyzerFINGERPRINT._get_imported_functions(elfs_map)
 
         has_sgxecall = any( [ "sgx_ecall" in x for x in imp_fcts.itervalues() ] )
 
@@ -800,20 +900,20 @@ class ExternalAnalyzerHEURISTICS:
     @staticmethod
     def is_openenclave(task, elfs_map):
         
-        has_openenclave_str = any(["openenclave" in s for s in ExternalAnalyzerHEURISTICS._get_string(elfs_map)])
+        has_openenclave_str = any(["openenclave" in s for s in ExternalAnalyzerFINGERPRINT._get_string(elfs_map)])
 
         return has_openenclave_str
 
     @staticmethod
     def is_asylo(task, elfs_map):
         
-        has_asylo_str = any(["asylo" in s for s in ExternalAnalyzerHEURISTICS._get_string(elfs_map)])
+        has_asylo_str = any(["asylo" in s for s in ExternalAnalyzerFINGERPRINT._get_string(elfs_map)])
 
         return has_asylo_str
 
     @staticmethod
     def is_graphene(task_t, elfs_map):
-        strs = ExternalAnalyzerHEURISTICS._get_string(elfs_map)
+        strs = ExternalAnalyzerFINGERPRINT._get_string(elfs_map)
         has_graphene_str = any(["graphene" in s.lower() for s in strs])
         has_devgsgx_str = any(["/dev/gsgx" in s.lower() for s in strs])
 
@@ -828,7 +928,7 @@ class ExternalAnalyzerHEURISTICS:
     @staticmethod
     def is_sgxlkl(task_t, elfs_map):
 
-        is_openenclave = ExternalAnalyzerHEURISTICS.is_openenclave(task_t, elfs_map)
+        is_openenclave = ExternalAnalyzerFINGERPRINT.is_openenclave(task_t, elfs_map)
 
         has_mainelf_sgxlklrun = False
         for k, v in elfs_map.iteritems():
@@ -843,7 +943,7 @@ class ExternalAnalyzerHEURISTICS:
         
         has_libsgx_urts = any( [ "libsgx_urts.so" in k for k in elfs_map.keys() ] )
 
-        imp_fcts = ExternalAnalyzerHEURISTICS._get_imported_functions(elfs_map)
+        imp_fcts = ExternalAnalyzerFINGERPRINT._get_imported_functions(elfs_map)
 
         has_sgxecall = any( [ "sgx_ecall" in x for x in imp_fcts.itervalues() ] )
 

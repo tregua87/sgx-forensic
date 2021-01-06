@@ -11,6 +11,10 @@ import volatility.plugins.linux.dmesg as linux_dmesg
 import volatility.plugins.linux.lsmod as linux_lsmod
 import volatility.plugins.linux.pslist as linux_pslist
 import volatility.plugins.linux.psxview as linux_psxview
+
+# import volatility.plugins.linux.process_stack as linux_process_stack
+# import volatility.plugins.linux.process_info as linux_process_info
+
 from volatility.plugins.overlays.linux.linux import task_struct
 
 from volatility.renderers.html import HTMLRenderer, JSONRenderer
@@ -19,9 +23,9 @@ from volatility.renderers import TreeGrid
 from volatility.renderers.basic import Address
 
 # contains a static analyzer for interface analysis
-from external_analyzer import ExternalAnalyzerSGXSDK, ExternalAnalyzerOE, ExternalAnalyzerASYLO, ExternalAnalyzerGRAPHENE, ExternalAnalyzerSGXLKL, ExternalAnalyzerRUSTSDK, ExternalAnalyzerHEURISTICS
+from external_analyzer import ExternalAnalyzerSGXSDK, ExternalAnalyzerOE, ExternalAnalyzerASYLO, ExternalAnalyzerGRAPHENE, ExternalAnalyzerSGXLKL, ExternalAnalyzerRUSTSDK, ExternalAnalyzerFINGERPRINT
 
-import json, tempfile
+import json, tempfile, string
 from struct import *
 
 class EPCBank:
@@ -89,8 +93,9 @@ class SGXEnclave:
         else:
             self.einfo["framework"] = None
             self.einfo["ecreate"] = None
-            self.einfo["ecalls"] = None
-            self.einfo["ocalls"] = None
+            self.einfo["interface"] = []
+            # self.einfo["ecalls"] = None
+            # self.einfo["ocalls"] = None
 
     def _extract_interface_info(self):
 
@@ -114,24 +119,31 @@ class SGXEnclave:
             framework_strategy = self.framework
 
         if framework_strategy == "sgxsdk":
-            ecreate, ecalls, ocalls = self._infer_interfaces_sgxsdk(task_t, elfs_map)
+        #     ecreate, ecalls, ocalls = self._infer_interfaces_sgxsdk(task_t, elfs_map)
+            ecreate, interface = self._infer_interfaces_sgxsdk(task_t, elfs_map)
         elif framework_strategy == "openenclave":
-            ecreate, ecalls, ocalls = self._infer_interfaces_openenclave(task_t, elfs_map)
+        #     ecreate, ecalls, ocalls = self._infer_interfaces_openenclave(task_t, elfs_map)
+            ecreate, interface = self._infer_interfaces_openenclave(task_t, elfs_map)
         elif framework_strategy == "asylo":
-            ecreate, ecalls, ocalls = self._infer_interfaces_asylo(task_t, elfs_map)
+        #     ecreate, ecalls, ocalls = self._infer_interfaces_asylo(task_t, elfs_map)
+            ecreate, interface = self._infer_interfaces_asylo(task_t, elfs_map)
         elif framework_strategy == "graphene":
-            ecreate, ecalls, ocalls = self._infer_interfaces_graphene(task_t, elfs_map)
+        #     ecreate, ecalls, ocalls = self._infer_interfaces_graphene(task_t, elfs_map)
+            ecreate, interface = self._infer_interfaces_graphene(task_t, elfs_map)
         elif framework_strategy == "sgxlkl":
-            ecreate, ecalls, ocalls = self._infer_interfaces_sgxlkl(task_t, elfs_map)
+        #     ecreate, ecalls, ocalls = self._infer_interfaces_sgxlkl(task_t, elfs_map)
+            ecreate, interface = self._infer_interfaces_sgxlkl(task_t, elfs_map)
         elif framework_strategy == "rustsdk":
-            ecreate, ecalls, ocalls = self._infer_interfaces_rustsdk(task_t, elfs_map)
+        #     ecreate, ecalls, ocalls = self._infer_interfaces_rustsdk(task_t, elfs_map)
+            ecreate, interface = self._infer_interfaces_rustsdk(task_t, elfs_map)
         else:
-            ecreate, ecalls, ocalls = [], [], []
+            ecreate, interface = [], []
 
         self.einfo["framework"] = framework_strategy
         self.einfo["ecreate"] = ecreate
-        self.einfo["ecalls"] = ecalls
-        self.einfo["ocalls"] = ocalls
+        # self.einfo["ecalls"] = ecalls
+        # self.einfo["ocalls"] = ocalls
+        self.einfo["interface"] = interface
 
     def _get_line(self, probe, task):
         # TODO, this method sucks! I didn't find another way to extract the page permission from a virtual address
@@ -183,11 +195,15 @@ class SGXEnclave:
             if elf_name not in fname:
                 continue
 
-            # exclude exec pages
+            # exclude writable pages
             if vma.vm_flags.is_writable():
                 continue
 
-            # print("0x{:x} 0x{:x} {} {}".format(vm_start, vm_end, vm_flags, fname))
+            # exclude exec pages
+            if vma.vm_flags.is_executable():
+                continue
+
+            # print("seek 0x{:x} 0x{:x} {} {}".format(vm_start, vm_end, vm_flags, fname))
 
             # from IPython import embed; embed(); exit()
 
@@ -211,7 +227,8 @@ class SGXEnclave:
 
                 # idx_line = great_idx.from_vaddr_to_line(maybe_add_str)
                 idx_line = self._get_line(maybe_add_str, task)
-                if maybe_add_str != 0 and idx_line and idx_line[0] in ["r--", "r-x"] and idx_line[1] == elf_name:
+                # if maybe_add_str != 0 and idx_line and idx_line[0] in ["r--", "r-x"] and idx_line[1] == elf_name:
+                if maybe_add_str != 0 and idx_line and idx_line[0] in ["r--", "r-x"] and  elf_name in idx_line[1]:
                     # print("-> 0x{:x} points to const page ".format(maybe_add_str))
                     # print("-> 0x{:x} 0x{:x} {} {}".format(idx_line[2][0], idx_line[2][1], idx_line[0], idx_line[1]))
                     # print("-")
@@ -248,7 +265,7 @@ class SGXEnclave:
                     # file.seek(offset)
 
                     if is_string:
-                        # print(f"0x{maybe_add_str:02x} - 0x{(maybe_add_str-base_addr):02x}")
+                        # print("a string @ 0x{:02x} - 0x{:02x}".format(maybe_add_str, (maybe_add_str-elf_start)))
                         if not offset_begin_table:
                             # print("a new table")
                             offset_begin_table = offset - 8
@@ -316,6 +333,8 @@ class SGXEnclave:
             print("Cannot find main ELF")
             exit()
 
+        # print("ELF {}".format(elf_name))
+
         for vma in task.get_proc_maps():
             vm_start = int(vma.vm_start)
             vm_end = int(vma.vm_end)
@@ -327,9 +346,15 @@ class SGXEnclave:
             if elf_name not in fname:
                 continue
 
+            # # exclude writable pages
+            # if vma.vm_flags.is_writable():
+            #     continue
+
             # exclude exec pages
-            if vma.vm_flags.is_writable():
+            if vma.vm_flags.is_executable():
                 continue
+
+            # print("seek: {} 0x{:x} 0x{:x} {}".format(fname, vm_start, vm_end, vm_flags))
 
             offset = vm_start
             max_offset = vm_end
@@ -337,14 +362,14 @@ class SGXEnclave:
             b = proc_as.zread(offset, 8)
             offset += 8
 
-            # print(f"[INFO] offset: {offset}")
-            # print(f"[INFO] max_offset: {max_offset}")
+            # print("[INFO] offset: 0x{:x}".format(offset))
+            # print("[INFO] max_offset: 0x{:x}".format(max_offset))
 
             ocall_addr = 0
             n_ocall = 0
 
             while offset <= max_offset:
-
+                # print("[INFO] offset: 0x{:x}".format(offset))
                 # maybe_add_fun = int.from_bytes(b, byteorder='little', signed=False)
                 maybe_add_fun = unpack("<Q", b)[0]
 
@@ -361,7 +386,8 @@ class SGXEnclave:
                 # else, check the pointer goes to an exec page of the same file
                 else:
                     idx_line = self._get_line(maybe_add_fun, task)
-                    if idx_line and "x" in idx_line[0] and "w" not in idx_line[0] and "r" in idx_line[0] and idx_line[1] == elf_name:
+                    # if idx_line and "x" in idx_line[0] and "w" not in idx_line[0] and "r" in idx_line[0] and idx_line[1] == elf_name:
+                    if idx_line and idx_line[0] == "r-x" and elf_name in idx_line[1]:
                         if not ocall_addr:
                             ocall_addr = offset - 8
                         n_ocall += 1
@@ -445,8 +471,7 @@ class SGXEnclave:
                         # idx_line = self._get_line(maybe_add_fun, task)
                         idx_line = self._get_line(maybe_add_fun, task)
                         if idx_line:
-                            # if "x" in idx_line[0] and "w" not in idx_line[0] and "r" in idx_line[0] and idx_line[1] == elf_name:
-                            if "x" in idx_line[0] and "w" not in idx_line[0] and "r" in idx_line[0] and elf_name in idx_line[1]:
+                            if idx_line[0] == "r-x" and elf_name in idx_line[1]:
                                 # print("[OK!] 0x{:02x}".format(maybe_add_fun))
                                 n_add_exec += 1
                             else:
@@ -470,37 +495,50 @@ class SGXEnclave:
 
     def _infer_interfaces_sgxsdk(self, task, elfs_map):
 
+        interface_map = []
+
         possible_ocalls = self._find_possible_ocall_table(elfs_map, task)
 
         try:
-            ecreate, ecalls, ocall_tables = ExternalAnalyzerSGXSDK.extract_interface(elfs_map, possible_ocalls)
+            # ecreate, ecalls, ocall_tables = ExternalAnalyzerSGXSDK.extract_interface(elfs_map, possible_ocalls)
+            ecreate, pair_ecall_ocall_table = ExternalAnalyzerSGXSDK.extract_interface(elfs_map, possible_ocalls)
         except Exception, e:
             print("exception here")
             from IPython import embed; embed(); exit()
 
-        ocalls = set()
+        # print(pair_ecall_ocall_table)
+        # exit()
 
-        # to read things
-        proc_as = task.get_process_address_space()
-        for ot in ocall_tables:
+        for ecalls, ocall_table in pair_ecall_ocall_table:
 
-            num_ocall_bytes = proc_as.zread(ot, 8)
-            num_ocall = unpack("<Q", num_ocall_bytes)[0]
+            if ecalls:
 
-            for i in range(num_ocall):
-                ocall_add_bytes = proc_as.zread(ot + (i+1)*8, 8)
-                ocall_add = unpack("<Q", ocall_add_bytes)[0]
-                ocalls.add(ocall_add)
+                ocalls = set()
 
-        return ecreate, ecalls, ocalls
+                if ocall_table != 0x0:
+
+                    # to read things
+                    proc_as = task.get_process_address_space()
+
+                    num_ocall_bytes = proc_as.zread(ocall_table, 8)
+                    num_ocall = unpack("<Q", num_ocall_bytes)[0]
+
+                    for i in range(num_ocall):
+                        ocall_add_bytes = proc_as.zread(ocall_table + (i+1)*8, 8)
+                        ocall_add = unpack("<Q", ocall_add_bytes)[0]
+                        ocalls.add(ocall_add)
+
+                interface_map.append({"ebase": None, "ecall": list(ecalls), "ocall": list(ocalls)})
+
+        return ecreate, interface_map
 
     def _infer_interfaces_rustsdk(self, task, elfs_map):
 
         pltjmp = ExternalAnalyzerRUSTSDK.extract_pltjmp(elfs_map)
-        print(pltjmp)
+        # print(pltjmp)
 
         exported_fun = ExternalAnalyzerRUSTSDK.extract_exported_fun(elfs_map, "libsgx_urts.so")
-        print(exported_fun)
+        # print(exported_fun)
 
         # get libsgx_urts.so base address
         libsgx_urts_ba = None
@@ -531,34 +569,43 @@ class SGXEnclave:
 
             # print("0x{:x} -> 0x{:x} -> 0x{:x} -> 0x{:x} | [{}]".format(k, v, ptr_add, ptr_add_rel, fun_name))
 
-        print("")
-        for f, n in plt_decoded.iteritems():
-            print("0x{:x} => {}".format(f, n))
-        exit()
+        # print("")
+        # for f, n in plt_decoded.iteritems():
+        #     print("0x{:x} => {}".format(f, n))
+        # exit()
 
         possible_ocall_table = self._find_possible_ocall_table(elfs_map, task)
 
         try:
-            ecalls, ocall_tables = ExternalAnalyzerRUSTSDK.extract_interface(elfs_map, possible_ocall_table, plt_decoded)
+            pair_ecall_ocall_table = ExternalAnalyzerRUSTSDK.extract_interface(elfs_map, possible_ocall_table, plt_decoded)
         except Exception, e:
             print("an exception here")
             from IPython import embed; embed(); exit()
 
-        ocalls = set()
+        interface_map = []
 
-        # to read things
-        proc_as = task.get_process_address_space()
-        for ot in ocall_tables:
+        for ecalls, ocall_table in pair_ecall_ocall_table:
 
-            num_ocall_bytes = proc_as.zread(ot, 8)
-            num_ocall = unpack("<Q", num_ocall_bytes)[0]
+            if ecalls:
 
-            for i in range(num_ocall):
-                ocall_add_bytes = proc_as.zread(ot + (i+1)*8, 8)
-                ocall_add = unpack("<Q", ocall_add_bytes)[0]
-                ocalls.add(ocall_add)
+                ocalls = set()
 
-        return [], ecalls, ocalls
+                if ocall_table != 0x0:
+
+                    # to read things
+                    proc_as = task.get_process_address_space()
+
+                    num_ocall_bytes = proc_as.zread(ocall_table, 8)
+                    num_ocall = unpack("<Q", num_ocall_bytes)[0]
+
+                    for i in range(num_ocall):
+                        ocall_add_bytes = proc_as.zread(ocall_table + (i+1)*8, 8)
+                        ocall_add = unpack("<Q", ocall_add_bytes)[0]
+                        ocalls.add(ocall_add)
+
+                interface_map.append({"ebase": None, "ecall": list(ecalls), "ocall": list(ocalls)})
+
+        return [], interface_map
 
     def _infer_interfaces_sgxlkl(self, task, elfs_map):
 
@@ -577,7 +624,10 @@ class SGXEnclave:
                 ocall_add = unpack("<Q", ocall_add_bytes)[0]
                 ocalls.add(ocall_add)
 
-        return ecreate, ecalls, ocalls
+        interface_map = []
+        interface_map.append({"ebase": None, "ecall": list(ecalls), "ocall": list(ocalls)})
+
+        return ecreate, interface_map
 
     def _infer_interfaces_graphene(self, task, elfs_map):
 
@@ -598,52 +648,67 @@ class SGXEnclave:
                 ocall_add = unpack("<Q", ocall_add_bytes)[0]
                 ocalls.add(ocall_add)
 
-        return [], ecalls, ocalls
+        interface_map = []
+        interface_map.append({"ebase": None, "ecall": list(ecalls), "ocall": list(ocalls)})
+
+        return [], interface_map
 
     def _infer_interfaces_asylo(self, task, elfs_map):
 
         ecalls = ExternalAnalyzerASYLO.extract_interface(elfs_map)
 
-        return [], ecalls, []
+        interface_map = []
+        interface_map.append({"ebase": None, "ecall": list(ecalls), "ocall": []})
+
+        return [], interface_map
 
     def _infer_interfaces_openenclave(self, task, elfs_map):
 
         ecreate = []
-        ecalls = []
-        ocalls = []
+        # ecalls = []
+        # ocalls = []
+        interface_map = []
 
         (possible_ocall_table, possible_ocall_table_size) = self._find_possible_ocall_table2(elfs_map, task)
         # print("Number of possible ocall_table found: {}".format(len(possible_ocall_table)))
 
         possible_ecall_table_content = self._find_ecall_token_table(elfs_map, task)
-        # print("Number of possible ecall_token_table found: {}".format(len(possible_ecall_table)))
+        # print("Number of possible ecall_token_table found: {}".format(len(possible_ecall_table_content)))
 
-        ecreate, ecalls, ocall_tables, ocall_table_size = ExternalAnalyzerOE.extract_interface(elfs_map, possible_ocall_table, possible_ocall_table_size, possible_ecall_table_content)
+        # ecreate, ecalls, ocall_tables, ocall_table_size = ExternalAnalyzerOE.extract_interface(elfs_map, possible_ocall_table, possible_ocall_table_size, possible_ecall_table_content)
+        ecreate, pair_ecall_ocalltable_ocalltablesize = ExternalAnalyzerOE.extract_interface(elfs_map, possible_ocall_table, possible_ocall_table_size, possible_ecall_table_content)
 
-        ocalls = set()
+        for ecalls, ocall_table, ocall_table_size  in pair_ecall_ocalltable_ocalltablesize:
 
-        # to read things
-        proc_as = task.get_process_address_space()
-        for ot, ot_size in zip(ocall_tables, ocall_table_size):
+            if ecalls:
 
-            for i in range(ot_size):
-                ocall_add_bytes = proc_as.zread(ot + i*8, 8)
-                ocall_add = unpack("<Q", ocall_add_bytes)[0]
-                ocalls.add(ocall_add)
+                ocalls = set()
 
-        return ecreate, ecalls, ocalls
+                if ocall_table != 0x0:
+
+                    # to read things
+                    proc_as = task.get_process_address_space()
+                    for i in range(ocall_table_size):
+                        ocall_add_bytes = proc_as.zread(ocall_table + i*8, 8)
+                        ocall_add = unpack("<Q", ocall_add_bytes)[0]
+                        ocalls.add(ocall_add)
+
+                interface_map.append({"ebase": None, "ecall": list(ecalls), "ocall": list(ocalls)})
+
+        return ecreate, interface_map
+        # return ecreate, ecalls, ocalls
 
     def _infer_framework(self, task_t, elfs_map):
         # The heuristic is a combination of distinguishability among single indicators and hierarchy of SGX framework
 
         heuristics_results = {}
 
-        heuristics_results["sgxsdk"] = ExternalAnalyzerHEURISTICS.is_sgxsdk(task_t, elfs_map)
-        heuristics_results["openenclave"] = ExternalAnalyzerHEURISTICS.is_openenclave(task_t, elfs_map)
-        heuristics_results["asylo"] = ExternalAnalyzerHEURISTICS.is_asylo(task_t, elfs_map)
-        heuristics_results["graphene"] = ExternalAnalyzerHEURISTICS.is_graphene(task_t, elfs_map)
-        heuristics_results["sgxlkl"] = ExternalAnalyzerHEURISTICS.is_sgxlkl(task_t, elfs_map)
-        heuristics_results["rustsdk"] = ExternalAnalyzerHEURISTICS.is_rustsdk(task_t, elfs_map)
+        heuristics_results["sgxsdk"] = ExternalAnalyzerFINGERPRINT.is_sgxsdk(task_t, elfs_map)
+        heuristics_results["openenclave"] = ExternalAnalyzerFINGERPRINT.is_openenclave(task_t, elfs_map)
+        heuristics_results["asylo"] = ExternalAnalyzerFINGERPRINT.is_asylo(task_t, elfs_map)
+        heuristics_results["graphene"] = ExternalAnalyzerFINGERPRINT.is_graphene(task_t, elfs_map)
+        heuristics_results["sgxlkl"] = ExternalAnalyzerFINGERPRINT.is_sgxlkl(task_t, elfs_map)
+        heuristics_results["rustsdk"] = ExternalAnalyzerFINGERPRINT.is_rustsdk(task_t, elfs_map)
 
         # no one returned true, I can't decide the framework
         if sum([v for v in heuristics_results.itervalues()]) == 0:
@@ -1314,8 +1379,9 @@ class linux_sgx(linux_common.AbstractLinuxCommand):
                         enclave.einfo["mmap"],
                         enclave.einfo["framework"],
                         enclave.einfo["ecreate"],
-                        enclave.einfo["ecalls"],
-                        enclave.einfo["ocalls"]
+                        enclave.einfo["interface"]
+                        # enclave.einfo["ecalls"],
+                        # enclave.einfo["ocalls"]
                     ])
         elif self.mode == 2:
             if not self._config.FORCE:
@@ -1388,7 +1454,7 @@ class linux_sgx(linux_common.AbstractLinuxCommand):
     def render_text(self, outfd, data):
 
         if self.mode == 0:
-            for i, (offset, task_name, task_pid, encl_base, encl_size, encl_flags, encl_xfrm, encl_ssa_size, encl_type, tcss, enclave_mmaps_tags, framework, ecreate, ecalls, ocalls) in self.generator(data):
+            for i, (offset, task_name, task_pid, encl_base, encl_size, encl_flags, encl_xfrm, encl_ssa_size, encl_type, tcss, enclave_mmaps_tags, framework, ecreate, interface) in self.generator(data):
 
                 outfd.write("\n" + "="*80 + "\n")
                 outfd.write("Host Process [offset=0x{:x}, name={}, PID: {}]\n".format(offset, task_name, task_pid))
@@ -1417,16 +1483,41 @@ class linux_sgx(linux_common.AbstractLinuxCommand):
                     else:
                         outfd.write("ECREATE: {}\n".format(" ".join(["0x{:x}".format(t) for t in ecreate])))
 
-                    if not ecalls:
-                        outfd.write("ECALL not found\n")
-                    else:
-                        outfd.write("ECALL: {}\n".format(" ".join(["0x{:x}".format(t) for t in ecalls])))
+                    # if not ecalls:
+                    #     outfd.write("ECALL not found\n")
+                    # else:
+                    #     outfd.write("ECALL: {}\n".format(" ".join(["0x{:x}".format(t) for t in ecalls])))
 
+                    # if not ocalls:
+                    #     outfd.write("OCALL not found\n")
+                    # else:
+                    #     outfd.write("OCALL: {}\n".format(" ".join(["0x{:x}".format(t) for t in ocalls])))
 
-                    if not ocalls:
-                        outfd.write("OCALL not found\n")
+                    if interface:
+                        for x in interface:
+                            ebase = x["ebase"]
+                            ecalls = x["ecall"]
+                            ocalls = x["ocall"]
+
+                            if ebase is None:
+                                outfd.write("EBASE not found\n")
+                            else:
+                                outfd.write("EBASE = 0x{:x}\n".format(ebase))
+                                
+                            if not ecalls:
+                                outfd.write("ECALL not found\n")
+                            else:
+                                outfd.write("ECALL: {}\n".format(" ".join(["0x{:x}".format(t) for t in ecalls])))
+
+                            if not ocalls:
+                                outfd.write("OCALL not found\n")
+                            else:
+                                outfd.write("OCALL: {}\n".format(" ".join(["0x{:x}".format(t) for t in ocalls])))
+                            
+                            outfd.write("")
                     else:
-                        outfd.write("OCALL: {}\n".format(" ".join(["0x{:x}".format(t) for t in ocalls])))
+                        outfd.write("Interfaces not found\n")
+
 
         else:
             # THIS IS THE STANDARD BEHAVIOR OF COMMAND.PY, IT FALLBACKS TO unified_output()
@@ -1438,7 +1529,7 @@ class linux_sgx(linux_common.AbstractLinuxCommand):
         if self.mode == 0:
             # print "json verbose output"
             lst = []
-            for i, (offset, task_name, task_pid, encl_base, encl_size, encl_flags, encl_xfrm, encl_ssa_size, encl_type, tcss, enclave_mmaps_tags, framework, ecreate, ecalls, ocalls) in self.generator(data):
+            for i, (offset, task_name, task_pid, encl_base, encl_size, encl_flags, encl_xfrm, encl_ssa_size, encl_type, tcss, enclave_mmaps_tags, framework, ecreate, interface) in self.generator(data):
 
                 record = {}
                 record["offset"] = offset
@@ -1454,8 +1545,9 @@ class linux_sgx(linux_common.AbstractLinuxCommand):
                 record["enclave_mmaps_tags"] = enclave_mmaps_tags
                 record["framework"] = framework
                 record["ecreate"] = list(ecreate)
-                record["ecalls"] = list(ecalls)
-                record["ocalls"] = list(ocalls)
+                record["interface"] = interface
+                # record["ecalls"] = list(ecalls)
+                # record["ocalls"] = list(ocalls)
 
                 lst.append(record)
 
