@@ -243,31 +243,33 @@ class ExternalAnalyzerOE:
                 has_ocall_ptr = 0
                 has_ecall_ptr = 0
 
-                for o in pdfj["ops"]:
-                    if "ptr" in o and o["ptr"] in ocall_table_norm:
-                        # print("ocall side")
-                        # print(o)
-                        has_ocall_ptr = possible_ocall_table[ocall_table_norm.index(o["ptr"])]
-                    
-                    if "ptr" in o and o["ptr"] in ecall_table_norm:
-                        # print("ecall side")
-                        # print(o)
-                        has_ecall_ptr = possible_ecall_table[ecall_table_norm.index(o["ptr"])]
-                    
+                if pdfj is not None:
 
-                if has_ocall_ptr and has_ecall_ptr:
-                    # print("[ECREATE] {} | ocall_table @ 0x{:02x} ecall_table @ 0x{:02x}".format(name, has_ocall_ptr, has_ecall_ptr))
-                    # from IPython import embed; embed(); exit()
+                    for o in pdfj["ops"]:
+                        if "ptr" in o and o["ptr"] in ocall_table_norm:
+                            # print("ocall side")
+                            # print(o)
+                            has_ocall_ptr = possible_ocall_table[ocall_table_norm.index(o["ptr"])]
+                        
+                        if "ptr" in o and o["ptr"] in ecall_table_norm:
+                            # print("ecall side")
+                            # print(o)
+                            has_ecall_ptr = possible_ecall_table[ecall_table_norm.index(o["ptr"])]
+                        
 
-                    ocall_table_size = possible_ocall_table_size[possible_ocall_table.index(has_ocall_ptr)]
+                    if has_ocall_ptr and has_ecall_ptr:
+                        # print("[ECREATE] {} | ocall_table @ 0x{:02x} ecall_table @ 0x{:02x}".format(name, has_ocall_ptr, has_ecall_ptr))
+                        # from IPython import embed; embed(); exit()
 
-                    pair_ecall_ocalltable_ocalltablesize_raw.add((has_ecall_ptr, has_ocall_ptr, ocall_table_size))
+                        ocall_table_size = possible_ocall_table_size[possible_ocall_table.index(has_ocall_ptr)]
 
-                    # ocall_table_confirmed += [has_ocall_ptr]
-                    # ocall_table_size_confirmed += [possible_ocall_table_size[possible_ocall_table.index(has_ocall_ptr)] ]
-                    # ecall_table_confirmed += [has_ecall_ptr]
-                    # ecall_table_size_confirmed += [possible_ecall_table_size[possible_ecall_table.index(has_ecall_ptr)] ]
-                    ecreates += [f["offset"] + base_addr]
+                        pair_ecall_ocalltable_ocalltablesize_raw.add((has_ecall_ptr, has_ocall_ptr, ocall_table_size))
+
+                        # ocall_table_confirmed += [has_ocall_ptr]
+                        # ocall_table_size_confirmed += [possible_ocall_table_size[possible_ocall_table.index(has_ocall_ptr)] ]
+                        # ecall_table_confirmed += [has_ecall_ptr]
+                        # ecall_table_size_confirmed += [possible_ecall_table_size[possible_ecall_table.index(has_ecall_ptr)] ]
+                        ecreates += [f["offset"] + base_addr]
 
         # ecall_info_str_flat = set()
         # for ec in ecall_table_confirmed:
@@ -321,16 +323,17 @@ class ExternalAnalyzerOE:
                 if typ == "fcn":
                     bf.cmd("s {}".format(name))
                     pdfj = bf.cmdj("pdfj")
-                    has_ecall_info_ptr = False
+                    if pdfj:
+                        has_ecall_info_ptr = False
 
-                    for o in pdfj["ops"]:
-                        if "ptr" in o and o["ptr"] in ecall_info_str_flat and "esil" in o and "rdx" in o["esil"]:
-                            has_ecall_info_ptr = True
-                            break
+                        for o in pdfj["ops"]:
+                            if "ptr" in o and o["ptr"] in ecall_info_str_flat and "esil" in o and "rdx" in o["esil"]:
+                                has_ecall_info_ptr = True
+                                break
 
-                    if has_ecall_info_ptr:
-                        # print("[ECALL] 0x{:02x}".format(fun_addr))
-                        ecall_set.add(fun_addr)
+                        if has_ecall_info_ptr:
+                            # print("[ECALL] 0x{:02x}".format(fun_addr))
+                            ecall_set.add(fun_addr)
 
         pair_ecall_ocalltable_ocalltablesize.append((list(ecall_set), ocall_table, ocall_table_size))
 
@@ -758,6 +761,7 @@ class ExternalAnalyzerRUSTSDK:
             if f_name == "sgx_ecall_switchless":
                 sgx_ecall_sw_add = addr
 
+        # print("before aflj")
 
         for f in bf.cmdj("aflj"):
             # from IPython import embed; embed()
@@ -776,31 +780,35 @@ class ExternalAnalyzerRUSTSDK:
                 # print(f"{typ} {name} 0x{minbound:02x} 0x{maxbound:02x}")
                 bf.cmd("s {}".format(name))
                 pdfj = bf.cmdj("pdfj")
-                has_ocall_optr = 0
-                has_call_sgxecall = False
-                has_call_sgxecallsw = False
-                has_call_sgxcreate = False
-                for o in pdfj["ops"]:
-                    if "ptr" in o and o["ptr"] in ocall_table_norm:
-                        has_ocall_optr = possible_ocall_table[ocall_table_norm.index(o["ptr"])]
-                    
-                    if "jump" in o and o["jump"] == sgx_ecall_add:
-                        has_call_sgxecall = True
 
-                    if "jump" in o and o["jump"] == sgx_ecall_sw_add:
-                        has_call_sgxecallsw = True
+                if pdfj is not None:
+                    has_ocall_optr = 0
+                    has_call_sgxecall = False
+                    has_call_sgxecallsw = False
+                    has_call_sgxcreate = False
+                    for o in pdfj["ops"]:
+                        if "ptr" in o and o["ptr"] in ocall_table_norm:
+                            has_ocall_optr = possible_ocall_table[ocall_table_norm.index(o["ptr"])]
+                        
+                        if "jump" in o and o["jump"] == sgx_ecall_add:
+                            has_call_sgxecall = True
 
-                if has_call_sgxecall and has_ocall_optr:
-                    # print("[ECALL] {} | ocall_table @ 0x{:02x}".format(name, has_ocall_optr))
-                    pair_ecall_ocall_table_raw.append((minbound + base_addr, has_ocall_optr))
-                    # ocall_table_confirmed.add(has_ocall_optr)
-                    # ecalls.add(minbound + base_addr)
+                        if "jump" in o and o["jump"] == sgx_ecall_sw_add:
+                            has_call_sgxecallsw = True
 
-                if has_call_sgxecallsw and has_ocall_optr:
-                    # print("[ECALL SWITCHLESS] {} | ocall_table @ 0x{:02x}0".format(name, has_ocall_optr))
-                    pair_ecall_ocall_table_raw.append((minbound + base_addr, has_ocall_optr))
-                    # ocall_table_confirmed.add(has_ocall_optr)
-                    # ecalls.add(minbound + base_addr)
+                    if has_call_sgxecall and has_ocall_optr:
+                        # print("[ECALL] {} | ocall_table @ 0x{:02x}".format(name, has_ocall_optr))
+                        pair_ecall_ocall_table_raw.append((minbound + base_addr, has_ocall_optr))
+                        # ocall_table_confirmed.add(has_ocall_optr)
+                        # ecalls.add(minbound + base_addr)
+
+                    if has_call_sgxecallsw and has_ocall_optr:
+                        # print("[ECALL SWITCHLESS] {} | ocall_table @ 0x{:02x}0".format(name, has_ocall_optr))
+                        pair_ecall_ocall_table_raw.append((minbound + base_addr, has_ocall_optr))
+                        # ocall_table_confirmed.add(has_ocall_optr)
+                        # ecalls.add(minbound + base_addr)
+
+        # print("before sorted loop")
 
         pair_ecall_ocall_table = []
         

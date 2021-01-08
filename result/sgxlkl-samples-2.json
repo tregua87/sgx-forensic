@@ -1,0 +1,1 @@
+{"rows": [[18446612700714500096, "sgx-lkl-run-oe", 21665, 139912854634496, "0x1000000000", "DEBUG,INITIALIZED,MODE_64BIT"], [18446612701220208640, "aesm_service", 1052, 140691000786944, "0x100000", "EINIT_TOKEN_KEY,INITIALIZED,MODE_64BIT,SECS_EVICTED"]], "columns": ["Offset", "Process", "PID", "Enclave base", "Enclave size", "Enclave flags"]}
