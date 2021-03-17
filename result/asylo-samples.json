@@ -1,1 +1,76 @@
-{"rows": [[18446612691615487936, "asylo_sqlite_ho", 22079, 139912451981312, "0x4000000", "DEBUG,INITIALIZED,MODE_64BIT,SECS_EVICTED"], [18446612690551949120, "quickstart_host", 22406, 140178807062528, "0x4000000", "DEBUG,INITIALIZED,MODE_64BIT"], [18446612700449627904, "aesm_service", 2372, 139668043595776, "0x200000", "INITIALIZED,MODE_64BIT,SECS_EVICTED"], [18446612700449627904, "aesm_service", 2372, 139668088684544, "0x100000", "EINIT_TOKEN_KEY,INITIALIZED,MODE_64BIT,SECS_EVICTED"], [18446612698101972992, "asylo_redis_hos", 21523, 139963857371136, "0x10000000", "DEBUG,INITIALIZED,MODE_64BIT"], [18446612701283489728, "aesm_service", 1073, 139805503520768, "0x100000", "EINIT_TOKEN_KEY,INITIALIZED,MODE_64BIT,SECS_EVICTED"], [18446612690890293248, "grpc_server_hos", 23430, 139890306056192, "0x8000000", "DEBUG,INITIALIZED,MODE_64BIT"], [18446612697418516288, "hello_world_hos", 23081, 139718977126400, "0x4000000", "DEBUG,INITIALIZED,MODE_64BIT"]], "columns": ["Offset", "Process", "PID", "Enclave base", "Enclave size", "Enclave flags"]}
+{
+    "rows": [
+        [
+            18446612691615488000,
+            "asylo_sqlite_ho",
+            22079,
+            139912451981312,
+            "0x4000000",
+            "DEBUG,INITIALIZED,MODE_64BIT,SECS_EVICTED"
+        ],
+        [
+            18446612690551950000,
+            "quickstart_host",
+            22406,
+            140178807062528,
+            "0x4000000",
+            "DEBUG,INITIALIZED,MODE_64BIT"
+        ],
+        [
+            18446612700449628000,
+            "aesm_service",
+            2372,
+            139668043595776,
+            "0x200000",
+            "INITIALIZED,MODE_64BIT,SECS_EVICTED"
+        ],
+        [
+            18446612700449628000,
+            "aesm_service",
+            2372,
+            139668088684544,
+            "0x100000",
+            "EINIT_TOKEN_KEY,INITIALIZED,MODE_64BIT,SECS_EVICTED"
+        ],
+        [
+            18446612698101973000,
+            "asylo_redis_hos",
+            21523,
+            139963857371136,
+            "0x10000000",
+            "DEBUG,INITIALIZED,MODE_64BIT"
+        ],
+        [
+            18446612701283490000,
+            "aesm_service",
+            1073,
+            139805503520768,
+            "0x100000",
+            "EINIT_TOKEN_KEY,INITIALIZED,MODE_64BIT,SECS_EVICTED"
+        ],
+        [
+            18446612690890293000,
+            "grpc_server_hos",
+            23430,
+            139890306056192,
+            "0x8000000",
+            "DEBUG,INITIALIZED,MODE_64BIT"
+        ],
+        [
+            18446612697418516000,
+            "hello_world_hos",
+            23081,
+            139718977126400,
+            "0x4000000",
+            "DEBUG,INITIALIZED,MODE_64BIT"
+        ]
+    ],
+    "columns": [
+        "Offset",
+        "Process",
+        "PID",
+        "Enclave base",
+        "Enclave size",
+        "Enclave flags"
+    ]
+}
