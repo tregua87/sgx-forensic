@@ -40,4 +40,6 @@ rustsgx|rustsgx-samples.bin|/home/tregua/dumps/result/rustsgx_rustsgx-samples_30
 rustsgx|rustsgx-samples.bin|/home/tregua/dumps/result/rustsgx_rustsgx-samples_23384_140384604782592.json|429.49|39.04|7:48.92|99%|LinuxUbuntu_5_4_0-42-generic_profilex64
 rustsgx|rustsgx-samples.bin|/home/tregua/dumps/result/rustsgx_rustsgx-samples_23606_139995000078336.json|367.87|32.39|6:40.79|99%|LinuxUbuntu_5_4_0-42-generic_profilex64
 rustsgx|rustsgx-samples.bin|/home/tregua/dumps/result/rustsgx_rustsgx-samples_23514_139659250237440.json|61.41|4.99|1:06.68|99%|LinuxUbuntu_5_4_0-42-generic_profilex64
-conclave|azure-concl.bin|/home/tregua/dumps/result/conclave_azure-concl_6320_140398722809856.json|1650.76s|149.80s|30:00.89|99%|LinuxUbuntu_5_4_0-1034-azure_profilex64
+conclave|azure-concl.bin|/home/tregua/dumps/result/conclave_azure-concl_6320_140398722809856.json|1650.76|149.80|30:00.89|99%|LinuxUbuntu_5_4_0-1034-azure_profilex64
+conclave|azure-concl.bin|/home/tregua/dumps/result/conclave_azure-concl_6320_140399591030784.json|7.97|0.63|0:08.646|99%|LinuxUbuntu_5_4_0-1034-azure_profilex64
+conclave|azure-concl.bin|/home/tregua/dumps/result/conclave_azure-concl_6320_140399595225088.json|7.96|0.61|0:08.592|99%|LinuxUbuntu_5_4_0-1034-azure_profilex64

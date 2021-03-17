@@ -833,7 +833,10 @@ class ExternalAnalyzerRUSTSDK:
 
             ecall_set.add(ecall)
 
-        pair_ecall_ocall_table.append((list(ecall_set), ocall_table))
+        try:
+            pair_ecall_ocall_table.append((list(ecall_set), ocall_table))
+        except:
+            pass
 
         # return [ecalls], [ocalls]
         return pair_ecall_ocall_table
