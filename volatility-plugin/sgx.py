@@ -1140,13 +1140,13 @@ class linux_sgx(linux_common.AbstractLinuxCommand):
                 sgx_mod_prnt = [x[0] for x in isgx_mod + dcap_mod]
                 print("Intel SGX driver loaded: {}".format(",".join(sgx_mod_prnt)))
             else:
-                print("Intel SGX kernel modules not loaded at dump time")
+                print("Intel SGX kernel modules not loaded at dump time, try with --force")
                 return []
 
             # Look for Intel SGX kernel module(s) in dmesg and EPC banks
             dmesg_module_str, epc_banks_dmesg = self.find_intel_module_dmesg()
             if not dmesg_module_str:
-                print("Intel SGX kernel modules not loaded at boot time")
+                print("Intel SGX kernel modules not loaded at boot time, try with --force")
                 return []
             else:
                 print("SGX module banner: {}".format(dmesg_module_str))
@@ -1158,17 +1158,18 @@ class linux_sgx(linux_common.AbstractLinuxCommand):
         self.epc_banks = list(epc_banks_iomem.union(epc_banks_dmesg).union(epc_banks_lime))
 
         if not self.epc_banks:
-            print("Seems CPU does not support SGX or it was not enabled in BIOS/UEFI...")
-            return []
+            print("No EPC zones found... try with --force to find at least the host processes")
+            if not self._config.FORCE:
+                return []
         else:
             print("SGX EPC banks:\t")
             for epc_bank in self.epc_banks:
                 print("\t" + str(epc_bank))
 
-        if (self._config.PID or self._config.OFFSET) and not self._config.DUMP_DIR:
+        if (self._config.PID or self._config.OFFSET) and not self._config.DUMP_DIR and not self._config.FORCE:
             self.mode = 0 # Info mode
             return self.show_detailed_info(isgx_mod)
-        elif (self._config.PID or self._config.OFFSET) and self._config.DUMP_DIR:
+        elif (self._config.PID or self._config.OFFSET) and self._config.DUMP_DIR and not self._config.FORCE:
             self.mode = 1 # ELF dump mode
             return self.dump_enclaves()
         else:
@@ -1252,7 +1253,7 @@ class linux_sgx(linux_common.AbstractLinuxCommand):
     def find_sgx_enclaves_raw(self, proc_iter):
         """Scan each single virtual address space looking for addresses translated into EPC pages"""
         enclaves = []
-        print("Look for hidden enclaves... very slow!")
+        print("Look for hidden enclaves... very slow! It can produce false positives!")
         for task in proc_iter:
 
             # Ignore kernel tasks
@@ -1262,11 +1263,28 @@ class linux_sgx(linux_common.AbstractLinuxCommand):
             task_addr_sp = task.get_process_address_space()
             try:
                 for vma in task.get_proc_maps():
-                    for page_addr in range(vma.vm_start, vma.vm_end, 4096):
+
+                    # Ignore common mappings and not device related ones
+                    if vma.vm_name(task) in ["[vdso]", "[stack]", "[heap]"]:
+                        continue
+                    flags = vma.flags()
+                    if "VM_IO" not in flags and \
+                       "VM_PFNMAP" not in flags:
+                        continue
+
+                    range_pages = xrange(vma.vm_start, vma.vm_end, 4096)
+                    total_pages = len(range_pages)
+                    invalid_pages = 0
+                    for page_addr in range_pages:
 
                         phy_pg_addr = task_addr_sp.vtop(page_addr)
-                        if phy_pg_addr is None:
+                        if not self.epc_banks:
+                            if not phy_pg_addr:
+                                invalid_pages += 1
                             continue
+                        else:
+                            if not phy_pg_addr:
+                                continue
 
                         for epc_bank in self.epc_banks:
                             if epc_bank.start <= phy_pg_addr <= epc_bank.end:
@@ -1276,6 +1294,11 @@ class linux_sgx(linux_common.AbstractLinuxCommand):
                                     raise StopIteration
                                 except ValueError:
                                     continue
+
+                    if not self.epc_banks and total_pages == invalid_pages:
+                        enclave = SGXEnclave(task, task, None, self._config.ANALYSIS, self._config.FRAMEWORK, self._config.MAINELF)
+                        enclaves.append(enclave)
+                        raise StopIteration
             except StopIteration:
                 pass
 
