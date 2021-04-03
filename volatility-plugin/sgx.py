@@ -11,6 +11,7 @@ import volatility.plugins.linux.dmesg as linux_dmesg
 import volatility.plugins.linux.lsmod as linux_lsmod
 import volatility.plugins.linux.pslist as linux_pslist
 import volatility.plugins.linux.psxview as linux_psxview
+from volatility.plugins.addrspaces.lime import LimeAddressSpace
 
 # import volatility.plugins.linux.process_stack as linux_process_stack
 # import volatility.plugins.linux.process_info as linux_process_info
@@ -1114,6 +1115,21 @@ class linux_sgx(linux_common.AbstractLinuxCommand):
             framework_supported_str = "|".join(self.FRAMEWORKS_SUPPORTED)
             return []
 
+        # Find if LiME addrspace is used
+        addr_space = self.addr_space
+        while addr_space:
+            if isinstance(addr_space, LimeAddressSpace):
+                # Look for EPC banks in LiME dumps
+                epc_banks_lime = self.find_epc_banks_lime(addr_space)
+                break
+            addr_space = addr_space.base
+        else:
+            print("LiME dump format not in use, no info about EPC zones from dump file...")
+            epc_banks_lime = set()
+
+        if epc_banks_lime:
+            print("EPC banks found through LiME metadata")
+
         # Look for EPC banks in /proc/iomem
         epc_banks_iomem = self.find_epc_banks_iomem()
 
@@ -1139,7 +1155,8 @@ class linux_sgx(linux_common.AbstractLinuxCommand):
             isgx_mod = False
             epc_banks_dmesg = set()
 
-        self.epc_banks = list(epc_banks_iomem.union(epc_banks_dmesg))
+        self.epc_banks = list(epc_banks_iomem.union(epc_banks_dmesg).union(epc_banks_lime))
+
         if not self.epc_banks:
             print("Seems CPU does not support SGX or it was not enabled in BIOS/UEFI...")
             return []
@@ -1157,6 +1174,22 @@ class linux_sgx(linux_common.AbstractLinuxCommand):
         else:
             self.mode = 2 # Find enclave mode
             return self.find_enclaves(isgx_mod)
+
+    def find_epc_banks_lime(self, addr_space):
+        """Identify the EPC banks in LiME dumps"""
+        epc_banks = set()
+
+        # Find EPC banks
+        offset = 0
+        header = obj.Object("lime_header", offset = offset, vm = addr_space.base)
+        while header.magic.v() == 0x4c694d45:
+            if header.reserved == 0x2153475845504321:
+                epc_banks.add(EPCBank("", int(header.start), int(header.end)))
+
+            offset = offset + header.end - header.start + 1 + self.profile.get_obj_size("lime_header")
+            header = obj.Object("lime_header", offset = offset, vm = addr_space.base)
+
+        return epc_banks
 
     def find_epc_banks_iomem(self):
         """Find the EPC banks defined by the BIOS/UEFI subsystem"""
@@ -1503,7 +1536,7 @@ class linux_sgx(linux_common.AbstractLinuxCommand):
                                 outfd.write("EBASE not found\n")
                             else:
                                 outfd.write("EBASE = 0x{:x}\n".format(ebase))
-                                
+
                             if not ecalls:
                                 outfd.write("ECALL not found\n")
                             else:
@@ -1513,7 +1546,7 @@ class linux_sgx(linux_common.AbstractLinuxCommand):
                                 outfd.write("OCALL not found\n")
                             else:
                                 outfd.write("OCALL: {}\n".format(" ".join(["0x{:x}".format(t) for t in ocalls])))
-                            
+
                             outfd.write("")
                     else:
                         outfd.write("Interfaces not found\n")
