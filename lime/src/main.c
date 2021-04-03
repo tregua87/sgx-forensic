@@ -24,7 +24,7 @@
 #include "lime.h"
 
 // This file
-static ssize_t write_lime_header(struct resource *);
+static ssize_t write_lime_header(struct resource *, bool is_epc);
 static ssize_t write_padding(size_t);
 static void write_range(struct resource *);
 static int init(void);
@@ -146,7 +146,7 @@ static int init() {
     int err = 0;
     int i;
     u32 eax, ebx, ecx, edx, type;
-	u64 epc_pa, epc_size;
+    u64 epc_pa, epc_size;
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,18)
     resource_size_t p_last = -1;
 #else
@@ -185,7 +185,7 @@ static int init() {
         if (!p->name || strcmp(p->name, LIME_RAMSTR))
             continue;
 
-        if (mode == LIME_MODE_LIME && write_lime_header(p) < 0) {
+        if (mode == LIME_MODE_LIME && write_lime_header(p, false) < 0) {
             DBG("Error writing header 0x%lx - 0x%lx", (long) p->start, (long) p->end);
             break;
         } else if (mode == LIME_MODE_PADDED && write_padding((size_t) ((p->start - 1) - p_last)) < 0) {
@@ -224,7 +224,6 @@ static int init() {
             if(err)
                 break;
         }
-
     }
 
     write_flush();
@@ -263,7 +262,7 @@ static int init() {
     return 0;
 }
 
-static ssize_t write_lime_header(struct resource * res) {
+static ssize_t write_lime_header(struct resource * res, bool is_epc) {
     lime_mem_range_header header;
 
     memset(&header, 0, sizeof(lime_mem_range_header));
@@ -271,6 +270,8 @@ static ssize_t write_lime_header(struct resource * res) {
     header.version = 1;
     header.s_addr = res->start;
     header.e_addr = res->end;
+    if(is_epc)
+        *((unsigned long long *) header.reserved) = LIME_EPC_MAGIC;
 
     return write_vaddr(&header, sizeof(lime_mem_range_header));
 }
@@ -326,7 +327,11 @@ static void write_range(struct resource * res) {
             DBG("Padding partial page: vaddr %p size: %lu", (void *) i, (unsigned long) is);
             write_padding(is);
         } else {
+#ifdef LIME_USE_KMAP_ATOMIC
+            v = kmap_atomic(p);
+#else
             v = kmap(p);
+#endif
             /*
              * If we need to compute the digest or compress the output
              * take a snapshot of the page. Otherwise save some cycles.
@@ -337,8 +342,11 @@ static void write_range(struct resource * res) {
             } else {
                 s = write_vaddr(v, is);
             }
+#ifdef LIME_USE_KMAP_ATOMIC
+            kunmap_atomic(v);
+#else
             kunmap(p);
-
+#endif
             if (s < 0) {
                 DBG("Failed to write page: vaddr %p. Skipping Range...", v);
                 break;
@@ -348,11 +356,11 @@ static void write_range(struct resource * res) {
 #ifdef LIME_SUPPORTS_TIMING
         end = ktime_get_real();
 
-        // if (timeout > 0 && ktime_to_ms(ktime_sub(end, start)) > timeout) {
-        //     DBG("Reading is too slow.  Skipping Range...");
-        //     write_padding(res->end - i + 1 - is);
-        //     break;
-        // }
+        if (timeout > 0 && ktime_to_ms(ktime_sub(end, start)) > timeout) {
+            DBG("Reading is too slow.  Skipping Range...");
+            write_padding(res->end - i + 1 - is);
+            break;
+        }
 #endif
 
     }
@@ -481,7 +489,7 @@ static int write_epc_bank_lime(u64 epc_pa, u64 epc_size, void *p_last_v) {
     epc_resource.start = epc_pa;
     epc_resource.end = epc_pa + epc_size - 1;
 
-    if (mode == LIME_MODE_LIME && write_lime_header(&epc_resource) < 0) {
+    if (mode == LIME_MODE_LIME && write_lime_header(&epc_resource, true) < 0) {
         DBG("Error writing header 0x%lx - 0x%lx", (long) epc_pa, (long) epc_resource.end);
         return 1;
     }

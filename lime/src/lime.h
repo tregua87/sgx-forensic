@@ -39,6 +39,7 @@
 #include <net/tcp.h>
 
 #include <linux/io.h>
+#include <stdbool.h>
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 6, 0)
 #include <crypto/hash.h>
@@ -74,10 +75,14 @@
     err; \
 })
 
-// Disable timing... too strict!
-// #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,35)
-// #define LIME_SUPPORTS_TIMING
-// #endif
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,35)
+#define LIME_SUPPORTS_TIMING
+#endif
+#undef LIME_SUPPORTS_TIMING // Disable TIMING support to correctly dump EPC zones
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,37))
+#define LIME_USE_KMAP_ATOMIC
+#endif
 
 #ifdef CONFIG_ZLIB_DEFLATE
 #define LIME_SUPPORTS_DEFLATE
@@ -100,8 +105,12 @@ typedef struct {
 #ifndef FEAT_CTL_LOCKED
 #define FEAT_CTL_LOCKED FEATURE_CONTROL_LOCKED
 #endif
-#define FEAT_CTL_SGX_ENABLED                (1<<18)
-#define X86_FEATURE_SGX		            (9 * 32 + 2)
+#ifndef FEAT_CTL_SGX_ENABLED
+    #define FEAT_CTL_SGX_ENABLED                (1<<18)
+#endif
+#ifndef X86_FEATURE_SGX
+    #define X86_FEATURE_SGX		            (9 * 32 + 2)
+#endif
 #define SGX_MAX_EPC_BANKS                   128
 #define SGX_CPUID		            0x12
 #define SGX_CPUID_FIRST_VARIABLE_SUB_LEAF   2
@@ -110,6 +119,7 @@ typedef struct {
 #define SGX_CPUID_SUB_LEAF_EPC_SECTION      0x1
 #define EDGBRD                              0x04
 #define ENCLS_FAULT_FLAG                    0x40000000
+#define LIME_EPC_MAGIC                      0x2153475845504321
 
 // MACROs from INTEL SGX SDK
 #define enclave_op(rax, data, rcx)                     \
