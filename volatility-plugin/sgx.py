@@ -24,7 +24,7 @@ from volatility.renderers import TreeGrid
 from volatility.renderers.basic import Address
 
 # contains a static analyzer for interface analysis
-from external_analyzer import ExternalAnalyzerSGXSDK, ExternalAnalyzerOE, ExternalAnalyzerASYLO, ExternalAnalyzerGRAPHENE, ExternalAnalyzerSGXLKL, ExternalAnalyzerRUSTSDK, ExternalAnalyzerFINGERPRINT
+from external_analyzer import ExternalAnalyzerSGXSDK, ExternalAnalyzerOE, ExternalAnalyzerASYLO, ExternalAnalyzerGRAPHENE, ExternalAnalyzerSGXLKL, ExternalAnalyzerRUSTSDK, ExternalAnalyzerFINGERPRINT, ExternalAnalyzerNONE
 
 import json, tempfile, string
 from struct import *
@@ -137,6 +137,8 @@ class SGXEnclave:
         elif framework_strategy == "rustsdk":
         #     ecreate, ecalls, ocalls = self._infer_interfaces_rustsdk(task_t, elfs_map)
             ecreate, interface = self._infer_interfaces_rustsdk(task_t, elfs_map)
+        elif framework_strategy == "none":
+            ecreate, interface = self._infer_interfaces_none(task_t, elfs_map)
         else:
             ecreate, interface = [], []
 
@@ -532,6 +534,22 @@ class SGXEnclave:
                 interface_map.append({"ebase": None, "ecall": list(ecalls), "ocall": list(ocalls)})
 
         return ecreate, interface_map
+
+    def _infer_interfaces_none(self, task, elfs_map):
+        interface_map = []
+
+        try:
+            ecalls = ExternalAnalyzerNONE.extract_interface(elfs_map)
+        except Exception, e:
+            print("exception here")
+            from IPython import embed; embed(); exit()
+
+        # print("[DONE] _infer_interfaces_none")
+        # exit(0)
+
+        interface_map.append({"ebase": None, "ecall": list(ecalls), "ocall": []})
+
+        return [], interface_map
 
     def _infer_interfaces_rustsdk(self, task, elfs_map):
 
@@ -1080,7 +1098,7 @@ class linux_sgx(linux_common.AbstractLinuxCommand):
         self._config.add_option('ANALYSIS', short_option = 'a', default = 'B',
                     help = 'Indicate which type of analysis performs over the enclave (I = Interface, M = Memory, B = Both)',
                     action = 'store', type = 'str')
-        self.FRAMEWORKS_SUPPORTED = ["sgxsdk", "openenclave" ,"asylo", "graphene", "sgxlkl", "rustsdk"]
+        self.FRAMEWORKS_SUPPORTED = ["sgxsdk", "openenclave" ,"asylo", "graphene", "sgxlkl", "rustsdk", "none"]
         framework_supported_str = "|".join(self.FRAMEWORKS_SUPPORTED)
         self._config.add_option('FRAMEWORK', default = None,
                     help = 'Force the plugin to use a specific framework strategy to infer the enclave interface <{}>'.format(framework_supported_str),

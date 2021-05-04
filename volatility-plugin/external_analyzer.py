@@ -608,6 +608,57 @@ class ExternalAnalyzerSGXLKL:
 
         return ecreate, ecalls, ocall_table_confirmed, ocall_table_size_confirmed
 
+
+class ExternalAnalyzerNONE:
+
+    @staticmethod 
+    def extract_interface(elfs_maps):
+        file_elf = None
+        ecalls = set()
+        for k, v in elfs_maps.iteritems():
+
+            file_elf = v["file_path"]
+
+            if not file_elf:
+                print("Cannot find ELF")
+                exit()
+            # else:
+            #     print("Trying {} - {}".format(k, file_elf))
+
+            bf = r2pipe.open(file_elf, ["-2"])
+            bf.cmd("aaaaaa")
+
+            for f in bf.cmdj("/ad/j enclu"):
+                # print(f)
+
+                offset = f["offset"]
+
+                # {'offset': 4794775, 'len': 3, 'code': 'enclu'}
+                # from IPython import embed; embed()
+                # f_addr = None
+                
+                # from IPython import embed; embed()
+                # pdf_res = None
+                # try:
+                #     pdf_res = bf.cmdj("pdfj @ 0x{:02x}".format(offset))
+                # except:
+                #     pass
+
+                # if pdf_res is not None:
+                #     o = pdf_res["ops"][0]
+                #     f_addr = o["fcn_addr"]
+                    
+                ecalls.add(offset)
+
+            if len(ecalls) != 0:
+                break
+
+            # for f in ecalls:
+            #     print("[INFO] function @ 0x{:02x} does EENTER".format(f))
+
+        return ecalls
+
+
 class ExternalAnalyzerRUSTSDK:
     @staticmethod 
     def extract_pltjmp(elfs_maps):
