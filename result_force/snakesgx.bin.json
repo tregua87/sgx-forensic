@@ -1,0 +1,1 @@
+{"rows": [[18446612701259962304, "aesm_service", 940, "?", "?", "?"], [18446612700585629632, "aesm_service", 2233, "?", "?", "?"], [18446612693032349568, "app", 11404, "?", "?", "?"]], "columns": ["Offset", "Process", "PID", "Enclave base", "Enclave size", "Enclave flags"]}
