@@ -14,7 +14,7 @@ Plugin Options:
 - MAINELF (--mainelf): Base virtual address of the main ELF object of a given process (using with PID or OFFSET)
 - DUMP-DIR (--dump-dir, -D): Output directory for enclaves ELFs
 - ANALYSIS (--analysis, -a): Indicate which type of analysis performs over the enclave (I = Interface, M = Memory, B = Both)
-- FRAMEWORK (--framework): Force the plugin to use a specific framework strategy to infer the enclave interface <sgxsdk|openenclave|asylo|graphene|sgxlkl|rustsdk>
+- FRAMEWORK (--framework): Force the plugin to use a specific framework strategy to infer the enclave interface <sgxsdk|openenclave|asylo|graphene|sgxlkl|rustsdk|none>
 
 
 ## Example of use
