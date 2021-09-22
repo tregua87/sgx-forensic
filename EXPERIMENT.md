@@ -42,7 +42,7 @@ For each of the following repository, we installed the framework and checked the
 ## Run the steps
 
 - We assume you have an SGX application from any of the above repo
-- For semplicity, we consider the classic `SampleEnclave` ([here](https://github.com/intel/linux-sgx/tree/master/SampleCode/SampleEnclave)) - but the *exactly* same approach can be replicated to other frameworks
+- For simplicity, we consider the classic `SampleEnclave` ([here](https://github.com/intel/linux-sgx/tree/master/SampleCode/SampleEnclave)), but the same approach can be replicated to any application from the other frameworks
     - To ensure the enclave is in memory, the simplest trick is to add a `getchar()` before `sgx_destroy_enclave()` ([here](https://github.com/intel/linux-sgx/blob/master/SampleCode/SampleEnclave/App/App.cpp#L204))
 - While application is running, run LiME ([here](./lime/README.md)) to dump the memory
 
