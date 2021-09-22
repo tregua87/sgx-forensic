@@ -3,9 +3,9 @@
 This is an guide to replicate the paper's experiment.
 
 In particular, this guide will focus on the following aspects:
-1. [System setup](#-System-Setup)
-2. [Get the repositories and commit version to use](#-Repositories)
-3. [Run the steps](##-Run-the-steps)
+1. [System setup](#system-setup)
+2. [Get the repositories and commit version to use](#repositories)
+3. [Run the steps](#run-the-steps)
 
 ## System Setup
 
