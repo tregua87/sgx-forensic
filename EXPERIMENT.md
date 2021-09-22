@@ -49,8 +49,10 @@ For each of the following repository, we installed the framework and checked the
 Give an machine image in a given location, we can run the following analyses with our plugin as decribed below (a copy from [here](./volatility-plugin/README.md)).
 
 ```bash
-IMAGE_DUMP=$HOME/sgx-forensic/lime/src/hello-openenclave.bin
+IMAGE_DUMP=$HOME/sgx-forensic/lime/src/sampleenclave.bin
 ```
+
+**NOTE:** If you have another machine, indicate the corrispective profile/overlay, i.e., change `LinuxUbuntu_5_4_0-42-generic_profilex64`. 
 
 ### 1) List of the SGX Enclaves in the system
 
@@ -60,7 +62,7 @@ You can use `FORCE` or `HIDDENPROC` for a deeper reserach (but it is slower).
 ```bash
 PLUGIN_DIR=$HOME/sgx-forensic-2/volatility-plugin/
 # NOTE: replace with real dump path
-IMAGE_DUMP=$HOME/sgx-forensic/lime/src/hello-openenclave.bin
+IMAGE_DUMP=$HOME/sgx-forensic/lime/src/sampleenclave.bin
 cd ~/volatility
 ./vol.py --plugins="$PLUGIN_DIR" -f $IMAGE_DUMP$ --profile=LinuxUbuntu_5_4_0-42-generic_profilex64 linux_sgx
 ```
@@ -91,7 +93,7 @@ If the main ELF differs from the one located by Volatility (e.g., it happens for
 ```bash
 PLUGIN_DIR=$HOME/sgx-forensic-2/volatility-plugin/
 # NOTE: replace with real dump path
-IMAGE_DUMP=$HOME/sgx-forensic/lime/src/hello-openenclave.bin
+IMAGE_DUMP=$HOME/sgx-forensic/lime/src/sampleenclave.bin
 cd ~/volatility
 ./vol.py --plugins="$PLUGIN_DIR" -f $IMAGE_DUMP$ --profile=LinuxUbuntu_5_4_0-42-generic_profilex64 linux_sgx -p 2304 --ebase  0x7f0345b00000
 ```
@@ -140,6 +142,6 @@ This is like the previous one, but you further indicate `DUMP-DIR` to the dump l
 ```bash
 PLUGIN_DIR=$HOME/sgx-forensic-2/volatility-plugin/
 # NOTE: replace with real dump path
-IMAGE_DUMP=$HOME/sgx-forensic/lime/src/hello-openenclave.bin
+IMAGE_DUMP=$HOME/sgx-forensic/lime/src/sampleenclave.bin
 cd ~/volatility
 ./vol.py --plugins="$PLUGIN_DIR" -f $IMAGE_DUMP$ --profile=LinuxUbuntu_5_4_0-42-generic_profilex64 linux_sgx -p 2304 --ebase  0x7f0345b00000 -D $TMP/tmp
