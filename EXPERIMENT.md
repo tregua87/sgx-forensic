@@ -1,6 +1,6 @@
 # How To Replicate the Paper's Experiment
 
-This is an guide to replicate the paper's experiment.
+This is a guide to replicate the paper's experiment.
 
 In particular, this guide will focus on the following aspects:
 1. [System setup](#system-setup)
@@ -52,7 +52,7 @@ Give an machine image in a given location, we can run the following analyses wit
 IMAGE_DUMP=$HOME/sgx-forensic/lime/src/sampleenclave.bin
 ```
 
-**NOTE:** If you have another machine, indicate the corrispective profile/overlay, i.e., change `LinuxUbuntu_5_4_0-42-generic_profilex64`. 
+**NOTE:** Remember to indicate the correct profile/overlay, i.e., change `LinuxUbuntu_5_4_0-42-generic_profilex64`. 
 
 ### 1) List of the SGX Enclaves in the system
 
